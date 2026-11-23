@@ -18,7 +18,7 @@ PACKAGES = [
     "base", "linux", "linux-firmware", "btrfs-progs", "dosfstools", "networkmanager", "sudo", "nano",
     "upower", "libnotify", "pipewire", "pipewire-pulse", "pipewire-alsa", "wireplumber",
     "noto-fonts", "noto-fonts-emoji", "inter-font", "ttf-jetbrains-mono", "firefox",
-    "bluez", "bluez-utils", "flatpak", "tawaki", "fiordland-desktop", "fiordland-keyring", "fastfetch", "git",
+    "bluez", "bluez-utils", "flatpak", "tawaki", "fiordland-base", "fiordland-desktop", "fiordland-keyring", "fastfetch", "git",
     "base-devel", "zram-generator", "man-db", "xdg-user-dirs", "xdg-utils", "papirus-icon-theme",
     "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon", "sof-firmware", "alsa-firmware", "reflector",
     "cups", "cups-filters", "cups-pk-helper", "ghostscript", "avahi", "nss-mdns", "ufw", "fwupd",
@@ -242,12 +242,40 @@ def alongside(cfg):
     return info["esp"], new[0]
 
 
+def manual(cfg, uefi):
+    disk = cfg["disk"]
+    root = cfg.get("root") or ""
+    esp = cfg.get("esp") or ""
+    status("Checking your partitions", 0.01)
+    if DRY:
+        log(f"manual on {disk}: root {root}, esp {esp}")
+        return esp, root
+    info = disks.probe(disk, uefi)
+    parts = {p["node"]: p for p in info["parts"]}
+    if root not in parts or not parts[root]["usable"]:
+        raise RuntimeError("The partition chosen for Fiordland is gone or too small; go back and choose again")
+    if uefi:
+        if esp not in parts or not parts[esp]["esp"] or parts[esp]["fs"] != "vfat":
+            raise RuntimeError("Choose a FAT32 EFI system partition for the boot files")
+    elif info["gpt"] and not info["biosBoot"]:
+        raise RuntimeError("This GPT disk needs a 1 MB BIOS boot partition for GRUB. Create one in the partition editor")
+    run(["wipefs", "-af", root])
+    if info["gpt"]:
+        num = re.search(r"(\d+)$", root).group(1)
+        run(["sgdisk", f"-t{num}:8304", f"-c{num}:Fiordland", disk], check=False)
+        settle(disk)
+    return esp if uefi else "", root
+
+
 def partition(cfg):
     disk = cfg["disk"]
     uefi = is_uefi()
     release_disk(disk)
-    MODE["alongside"] = cfg.get("mode") == "alongside"
-    if MODE["alongside"]:
+    mode = cfg.get("mode")
+    MODE["alongside"] = mode in ("alongside", "manual")
+    if mode == "manual":
+        esp, root = manual(cfg, uefi)
+    elif mode == "alongside":
         if not uefi:
             raise RuntimeError("Installing alongside needs UEFI")
         esp, root = alongside(cfg)
@@ -607,6 +635,7 @@ def snapper(user, root):
     for k, v in limits.items():
         args += ["-e", f's/^{k}=.*/{k}="{v}"/']
     chroot("sed", "-i", *args, "/etc/snapper/configs/root", check=False)
+    chroot("fiordland-migrate", "--stamp", check=False)
 
 
 def console_keymap(xkb):

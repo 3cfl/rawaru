@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -123,6 +124,7 @@ class Backend(QObject):
     timezoneGuessed = Signal(str)
     disksChanged = Signal()
     probed = Signal(str, "QVariantMap")
+    editorClosed = Signal()
 
     def __init__(self, dry_run=False):
         super().__init__()
@@ -207,7 +209,15 @@ class Backend(QObject):
                 time.sleep(0.6)
                 res = {"disk": disk, "uefi": True, "gpt": True, "esp": disk + "1", "system": "Windows", "notes": [],
                        "options": [{"kind": "shrink", "part": disk + "3", "label": "Windows", "max": 180 * 1000**3,
-                                    "min": 20 * 1000**3, "partSize": 240 * 1000**3}]}
+                                    "min": 20 * 1000**3, "partSize": 240 * 1000**3}],
+                       "parts": [{"node": disk + "1", "size": 100 * 1000**2, "fs": "vfat", "label": "EFI", "esp": True,
+                                  "biosBoot": False, "usable": False},
+                                 {"node": disk + "2", "size": 16 * 1000**2, "fs": "", "label": "", "esp": False,
+                                  "biosBoot": False, "usable": False},
+                                 {"node": disk + "3", "size": 240 * 1000**3, "fs": "ntfs", "label": "Windows",
+                                  "esp": False, "biosBoot": False, "usable": True},
+                                 {"node": disk + "4", "size": 60 * 1000**3, "fs": "ext4", "label": "data",
+                                  "esp": False, "biosBoot": False, "usable": True}]}
             else:
                 try:
                     out = subprocess.run(["sudo", "-n", "python3", os.path.join(HERE, "engine.py"), "--probe", disk],
@@ -216,6 +226,21 @@ class Backend(QObject):
                 except Exception as e:
                     res = {"disk": disk, "options": [], "notes": [f"Could not inspect this disk: {e}"]}
             self.probed.emit(disk, res)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(result=bool)
+    def hasPartitionEditor(self):
+        return self._dry or shutil.which("partitionmanager") is not None
+
+    @Slot()
+    def openPartitionEditor(self):
+        def work():
+            if not self._dry:
+                try:
+                    subprocess.run(["partitionmanager"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except OSError:
+                    pass
+            self.editorClosed.emit()
         threading.Thread(target=work, daemon=True).start()
 
     @Slot()

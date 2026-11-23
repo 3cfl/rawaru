@@ -30,6 +30,12 @@ ApplicationWindow {
     property bool probing: false
     property int optIndex: 0
     property real fiordSize: 0
+    property string rootPart: ""
+    property string espPart: ""
+    readonly property var usableParts: probe && probe.parts ? probe.parts.filter(p => p.usable) : []
+    readonly property var espParts: probe && probe.parts ? probe.parts.filter(p => p.esp && p.fs === "vfat") : []
+    readonly property bool manualOk: rootPart !== "" && rootPart !== espPart
+        && (backend.uefi ? espPart !== "" : (!probe || !probe.gpt || probe.biosBoot))
     readonly property var opt: probe && mode === "alongside" && optIndex < probe.options.length ? probe.options[optIndex] : null
     property string fullname: ""
     property string username: ""
@@ -47,7 +53,7 @@ ApplicationWindow {
 
     readonly property var steps: [
         { label: "Region", title: "Where are you?", sub: "Time zone and keyboard layout." },
-        { label: "Disk", title: "Choose a disk", sub: "Use the whole disk, or keep Windows and install next to it." },
+        { label: "Disk", title: "Choose a disk", sub: "Use the whole disk, install next to Windows, or pick partitions yourself." },
         { label: "Account", title: "Your account", sub: "The user you'll log in as every day." },
         { label: "Desktop", title: "Pick a desktop", sub: "You can install others later with tawaki." },
         { label: "Review", title: "Review", sub: "Nothing has been changed yet." },
@@ -68,7 +74,7 @@ ApplicationWindow {
         return null
     }
     readonly property bool canNext: step === 1 ? timezone !== "" && keymap !== ""
-        : step === 2 ? disk !== "" && !probing && understood
+        : step === 2 ? disk !== "" && !probing && understood && (mode !== "manual" || manualOk)
         : step === 3 ? youValid
         : step === 4 ? desktopSel !== null
         : true
@@ -103,6 +109,15 @@ ApplicationWindow {
     function zoneRegion(z) { return z.indexOf("/") < 0 ? "" : z.split("/").slice(0, -1).join(" / ").replace(/_/g, " ") }
 
     function gb(b) { return (b / 1e9).toFixed(b >= 100e9 ? 0 : 1) + " GB" }
+    function pickManual() {
+        if (mode !== "manual") understood = false
+        mode = "manual"
+        if (!usableParts.some(p => p.node === rootPart)) rootPart = usableParts.length ? usableParts[usableParts.length - 1].node : ""
+        if (!espParts.some(p => p.node === espPart)) espPart = espParts.length ? espParts[0].node : ""
+    }
+    function partText(p) {
+        return p.node.replace("/dev/", "") + "  " + gb(p.size) + (p.fs ? "  " + p.fs : "") + (p.label ? "  " + p.label : "")
+    }
     function pickOption(i) {
         if (i < 0) {
             if (mode !== "erase") understood = false
@@ -118,6 +133,8 @@ ApplicationWindow {
     onDiskChanged: {
         probe = null
         mode = "erase"
+        rootPart = ""
+        espPart = ""
         understood = false
         if (disk === "") { probing = false; return }
         probing = true
@@ -137,7 +154,8 @@ ApplicationWindow {
         backend.install({
             disk: disk, locale: sysLocale, timezone: timezone, keymap: keymap, fullname: fullname,
             username: username, hostname: hostname, password: password, autologin: autologin, kernel: kernel,
-            desktop: desktop, shell: dots, mode: mode, shrink: opt ? opt.part : "", size: opt ? Math.round(fiordSize) : 0
+            desktop: desktop, shell: dots, mode: mode, shrink: opt ? opt.part : "", size: opt ? Math.round(fiordSize) : 0,
+            root: mode === "manual" ? rootPart : "", esp: mode === "manual" && backend.uefi ? espPart : ""
         })
     }
 
@@ -152,7 +170,13 @@ ApplicationWindow {
             if (d !== win.disk) return
             win.probe = res
             win.probing = false
-            if (res.options && res.options.length) win.pickOption(0)
+            if (win.mode === "manual") win.pickManual()
+            else if (res.options && res.options.length) win.pickOption(0)
+        }
+        function onEditorClosed() {
+            if (win.disk === "") return
+            win.probing = true
+            backend.probe(win.disk)
         }
         function onLogAdded(line) {
             logModel.append({ line: line })
@@ -632,6 +656,120 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
+                                id: mrow
+                                visible: !win.probing
+                                readonly property bool selected: win.mode === "manual"
+                                width: parent.width
+                                height: mcol.height + 28
+                                radius: Theme.radius
+                                color: mmouse.containsMouse && !selected ? Theme.hover : Theme.panel
+                                border.color: selected ? Theme.accent : Theme.line
+                                MouseArea {
+                                    id: mmouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.pickManual()
+                                }
+                                Radio { x: 18; y: 16; on: mrow.selected }
+                                Column {
+                                    id: mcol
+                                    x: 50; y: 14
+                                    width: parent.width - 68
+                                    spacing: 4
+                                    Text { text: "Choose partitions"; color: Theme.text; font.pixelSize: 14; font.weight: Font.Medium }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: "Pick the partition for Fiordland yourself. Only that partition is formatted."
+                                        color: Theme.faint; font.pixelSize: 12
+                                    }
+                                    Column {
+                                        visible: mrow.selected
+                                        width: parent.width
+                                        spacing: 2
+                                        topPadding: 8
+                                        Text { text: "Install Fiordland on"; color: Theme.muted; font.pixelSize: 12 }
+                                        Repeater {
+                                            model: mrow.selected ? win.usableParts : []
+                                            delegate: Item {
+                                                id: prow
+                                                required property var modelData
+                                                width: parent.width
+                                                height: 30
+                                                Radio { anchors.verticalCenter: parent.verticalCenter; on: win.rootPart === prow.modelData.node }
+                                                Text {
+                                                    x: 30; anchors.verticalCenter: parent.verticalCenter
+                                                    text: win.partText(prow.modelData)
+                                                    color: win.rootPart === prow.modelData.node ? Theme.text : Theme.muted
+                                                    font.pixelSize: 13; font.features: { "tnum": 1 }
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: { if (win.rootPart !== prow.modelData.node) win.understood = false; win.rootPart = prow.modelData.node }
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            visible: win.usableParts.length === 0
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: "No partition of 16 GB or more. Make one in the partition editor."
+                                            color: Theme.faint; font.pixelSize: 12
+                                        }
+                                        Text {
+                                            visible: backend.uefi
+                                            topPadding: 8
+                                            text: "Boot files go on"
+                                            color: Theme.muted; font.pixelSize: 12
+                                        }
+                                        Repeater {
+                                            model: mrow.selected && backend.uefi ? win.espParts : []
+                                            delegate: Item {
+                                                id: erow2
+                                                required property var modelData
+                                                width: parent.width
+                                                height: 30
+                                                Radio { anchors.verticalCenter: parent.verticalCenter; on: win.espPart === erow2.modelData.node }
+                                                Text {
+                                                    x: 30; anchors.verticalCenter: parent.verticalCenter
+                                                    text: win.partText(erow2.modelData) + "  (kept, not formatted)"
+                                                    color: win.espPart === erow2.modelData.node ? Theme.text : Theme.muted
+                                                    font.pixelSize: 13; font.features: { "tnum": 1 }
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: win.espPart = erow2.modelData.node
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            visible: backend.uefi && win.espParts.length === 0
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: "No EFI system partition. Make a 512 MB FAT32 partition with the boot and esp flags."
+                                            color: Theme.faint; font.pixelSize: 12
+                                        }
+                                        Text {
+                                            visible: !backend.uefi && !!win.probe && win.probe.gpt && !win.probe.biosBoot
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: "This disk needs a 1 MB partition with the bios_grub flag for GRUB. Make one in the partition editor."
+                                            color: Theme.faint; font.pixelSize: 12
+                                        }
+                                        Item { width: 1; height: 8 }
+                                        FButton {
+                                            visible: backend.hasPartitionEditor()
+                                            kind: "ghost"
+                                            text: "Partition editor"
+                                            onClicked: backend.openPartitionEditor()
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
                                 id: erow
                                 visible: !win.probing
                                 readonly property bool selected: win.mode === "erase"
@@ -689,15 +827,17 @@ ApplicationWindow {
                                 id: eraseRow
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 12
-                                Check { on: win.understood; tint: win.mode === "erase" ? Theme.danger : Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                                Check { on: win.understood; tint: win.mode !== "alongside" ? Theme.danger : Theme.accent; anchors.verticalCenter: parent.verticalCenter }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: win.mode === "erase"
                                         ? "Erase everything on " + (win.diskInfo ? win.diskInfo.model + " (" + win.diskInfo.sizeText + ")" : "")
+                                        : win.mode === "manual"
+                                        ? "Erase everything on " + (win.rootPart ? win.rootPart.replace("/dev/", "") : "the chosen partition")
                                         : win.opt && win.opt.kind === "shrink"
                                             ? "I have a backup of my important files"
                                             : "Use the free space on " + (win.diskInfo ? win.diskInfo.model : "")
-                                    color: win.understood && win.mode === "erase" ? Theme.danger : Theme.text
+                                    color: win.understood && win.mode !== "alongside" ? Theme.danger : Theme.text
                                     font.pixelSize: 14
                                 }
                             }
@@ -922,7 +1062,9 @@ ApplicationWindow {
                             ReviewRow { label: "Language"; value: win.localeName(win.sysLocale); target: 0 }
                             ReviewRow { label: "Time zone"; value: win.timezone.replace(/_/g, " "); target: 1 }
                             ReviewRow { label: "Keyboard"; value: win.keymapName(win.keymap); target: 1 }
-                            ReviewRow { label: "Disk"; value: !win.diskInfo ? "" : win.opt
+                            ReviewRow { label: "Disk"; value: !win.diskInfo ? "" : win.mode === "manual"
+                                ? win.diskInfo.model + ", Fiordland on " + win.rootPart.replace("/dev/", "") + " (formatted)" + (backend.uefi && win.espPart ? ", boot files on " + win.espPart.replace("/dev/", "") : "")
+                                : win.opt
                                 ? win.diskInfo.model + ", " + (win.opt.kind === "shrink" ? "alongside " + (win.probe.system || win.opt.label) : "in free space") + ", Fiordland gets " + win.gb(win.fiordSize)
                                 : win.diskInfo.model + ", " + win.diskInfo.sizeText + ", will be erased"; target: 2 }
                             ReviewRow { label: "Account"; value: (win.fullname ? win.fullname + ", " : "") + win.username + "@" + win.hostname + (win.autologin ? ", automatic login" : ""); target: 3 }

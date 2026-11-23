@@ -4,7 +4,7 @@ The graphical installer for [Fiordland Linux](https://fiordland.apollo44.lat), b
 
 - Pick from 11 desktops and 13 window managers, with optional dotfiles
 - Btrfs with snapper snapshots you can boot from the GRUB menu (grub-btrfs), zram swap
-- Whole disk, or alongside Windows: shrinks NTFS or uses free space (UEFI + GPT)
+- Whole disk, alongside Windows (shrinks NTFS or uses free space, UEFI + GPT), or partitions you pick, with KDE Partition Manager one click away
 - GRUB on UEFI and BIOS, with os-prober
 - GPU driver detection, CachyOS or Arch kernel
 - VM guest tools installed automatically

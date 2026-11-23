@@ -11,6 +11,9 @@ ESP_TYPE = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
 BASIC_DATA = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
 MSR_TYPE = "E3C9E316-0B5C-4DB8-817D-F92DF00215AE"
 WINRE_TYPE = "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"
+BIOS_BOOT = "21686148-6449-6E6F-744E-656564454649"
+MBR_ESP = "EF"
+MIN_MANUAL = 16 * 1000**3
 
 
 def sh(cmd, inp=None, timeout=60):
@@ -79,14 +82,30 @@ def os_names():
     return names
 
 
+def partitions(pt):
+    sector = pt.get("sectorsize", 512)
+    out = []
+    for p in pt.get("partitions", []):
+        ptype = p.get("type", "").upper()
+        info = blkid(p["node"])
+        out.append({"node": p["node"], "size": p["size"] * sector, "fs": info.get("TYPE", ""),
+                    "label": info.get("LABEL") or info.get("PARTLABEL") or p.get("name", ""),
+                    "esp": ptype in (ESP_TYPE, MBR_ESP), "biosBoot": ptype == BIOS_BOOT,
+                    "usable": p["size"] * sector >= MIN_MANUAL and ptype not in (ESP_TYPE, MBR_ESP, BIOS_BOOT, MSR_TYPE)})
+    return out
+
+
 def probe(disk, uefi=None):
     if uefi is None:
         uefi = os.path.isdir("/sys/firmware/efi")
-    res = {"disk": disk, "uefi": uefi, "gpt": False, "esp": "", "system": "", "options": [], "notes": []}
+    res = {"disk": disk, "uefi": uefi, "gpt": False, "esp": "", "system": "", "options": [], "notes": [],
+           "parts": [], "biosBoot": False}
     pt = table(disk)
     if not pt:
         return res
     res["gpt"] = pt.get("label") == "gpt"
+    res["parts"] = partitions(pt)
+    res["biosBoot"] = any(p["biosBoot"] for p in res["parts"])
     if not uefi:
         res["notes"].append("Installing next to another system needs a computer started in UEFI mode.")
         return res
