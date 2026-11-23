@@ -167,7 +167,7 @@ ApplicationWindow {
 
     Connections {
         target: backend
-        function onTimezoneGuessed(tz) { if (win.timezone === "UTC") win.timezone = tz }
+        function onTimezoneGuessed(tz) { if (win.timezone === "UTC" && win.step <= 5) win.timezone = tz }
         function onProbed(d, res) {
             if (d !== win.disk) return
             win.probe = res

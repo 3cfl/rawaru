@@ -252,18 +252,21 @@ class Backend(QObject):
     @Slot()
     def guessTimezone(self):
         def work():
-            tz = ""
-            try:
-                with urllib.request.urlopen("https://geoip.kde.org/v1/calamares", timeout=3) as r:
-                    tz = json.load(r).get("time_zone", "")
-            except Exception:
-                tz = ""
-            if not tz:
+            for _ in range(36):
                 try:
-                    tz = os.path.realpath("/etc/localtime").split("zoneinfo/", 1)[1]
+                    with urllib.request.urlopen("https://geoip.kde.org/v1/calamares", timeout=4) as r:
+                        tz = json.load(r).get("time_zone", "")
                 except Exception:
                     tz = ""
-            if tz in self._timezones:
+                if tz in self._timezones:
+                    self.timezoneGuessed.emit(tz)
+                    return
+                time.sleep(5)
+            try:
+                tz = os.path.realpath("/etc/localtime").split("zoneinfo/", 1)[1]
+            except Exception:
+                tz = ""
+            if tz in self._timezones and tz != "UTC":
                 self.timezoneGuessed.emit(tz)
         threading.Thread(target=work, daemon=True).start()
 
