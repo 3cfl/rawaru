@@ -42,6 +42,31 @@ KERNEL = {"cachy": True}
 ESP_MNT = "/efi"
 MODE = {"alongside": False}
 
+XFCE_LOOK = r"""#!/bin/sh
+sleep 2
+set_prop() { xfconf-query -c "$1" -p "$2" -n -t "$3" -s "$4" 2>/dev/null || xfconf-query -c "$1" -p "$2" -s "$4"; }
+set_prop xsettings /Net/ThemeName string Adwaita-dark
+set_prop xsettings /Net/IconThemeName string Fiordland
+set_prop xsettings /Gtk/FontName string "Inter 10"
+set_prop xsettings /Gtk/MonospaceFontName string "JetBrains Mono 10"
+set_prop xfwm4 /general/title_font string "Inter Bold 10"
+if systemd-detect-virt --vm -q; then
+  set_prop xfce4-power-manager /xfce4-power-manager/dpms-enabled bool false
+  set_prop xfce4-power-manager /xfce4-power-manager/blank-on-ac int 0
+  set_prop xfce4-screensaver /saver/enabled bool false
+  set_prop xfce4-screensaver /lock/enabled bool false
+fi
+for _ in $(seq 20); do
+  props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep last-image)
+  [ -n "$props" ] && break
+  sleep 1
+done
+for p in $props; do
+  xfconf-query -c xfce4-desktop -p "$p" -s /usr/share/fiordland/wallpaper.png
+done
+rm -f "$HOME/.config/autostart/fiordland-xfce-look.desktop"
+"""
+
 DRY = False
 TAIL = 20
 
@@ -606,6 +631,11 @@ def desktop(cfg, user, keymap):
              f"Exec=sh -c 'plasma-apply-wallpaperimage {wall} && rm -f ~/.config/autostart/fiordland-wallpaper.desktop'\n")
         if keymap != "us":
             home(user, ".config/kxkbrc", f"[Layout]\nLayoutList={keymap}\nUse=true\n")
+    elif did == "xfce":
+        home(user, ".local/share/fiordland/xfce-look.sh", XFCE_LOOK, 0o755)
+        home(user, ".config/autostart/fiordland-xfce-look.desktop",
+             "[Desktop Entry]\nType=Application\nName=Fiordland look\nNoDisplay=true\n"
+             f"Exec=/home/{user}/.local/share/fiordland/xfce-look.sh\n")
     elif did == "hyprland":
         conf = from_system("/usr/share/fiordland/hyprland.lua")
         conf = re.sub(r'(?m)^local shell = "[^"]*"', f'local shell = "{"dots" if script else shell}"', conf)

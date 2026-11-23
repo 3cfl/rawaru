@@ -196,6 +196,15 @@ class Backend(QObject):
         return desktops.catalogue()
 
     @Property(str, constant=True)
+    def defaultDesktop(self):
+        try:
+            with open("/etc/rawaru/default-desktop") as f:
+                d = f.read().strip()
+        except OSError:
+            d = os.environ.get("RAWARU_DESKTOP", "")
+        return d if any(x["id"] == d for x in desktops.DESKTOPS) else "plasma"
+
+    @Property(str, constant=True)
     def wallpaper(self):
         for p in ("/usr/share/fiordland/wallpaper.png",
                   os.path.join(HERE, "..", "packages", "fiordland-desktop", "files", "wallpaper.png")):
@@ -229,16 +238,20 @@ class Backend(QObject):
             self.probed.emit(disk, res)
         threading.Thread(target=work, daemon=True).start()
 
+    def _editor(self):
+        return next((e for e in ("partitionmanager", "gparted") if shutil.which(e)), None)
+
     @Slot(result=bool)
     def hasPartitionEditor(self):
-        return self._dry or shutil.which("partitionmanager") is not None
+        return self._dry or self._editor() is not None
 
     @Slot()
     def openPartitionEditor(self):
         def work():
-            if not self._dry:
+            editor = self._editor()
+            if not self._dry and editor:
                 try:
-                    subprocess.run(["partitionmanager"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run([editor], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except OSError:
                     pass
             self.editorClosed.emit()

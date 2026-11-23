@@ -45,7 +45,7 @@ ApplicationWindow {
     property string password2: ""
     property bool autologin: false
     property string kernel: "cachyos"
-    property string desktop: "plasma"
+    property string desktop: backend.defaultDesktop
     property string dots: ""
     property bool wmTab: false
     property bool failed: false
