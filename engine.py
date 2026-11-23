@@ -50,6 +50,10 @@ set_prop xsettings /Net/IconThemeName string Fiordland
 set_prop xsettings /Gtk/FontName string "Inter 10"
 set_prop xsettings /Gtk/MonospaceFontName string "JetBrains Mono 10"
 set_prop xfwm4 /general/title_font string "Inter Bold 10"
+set_prop xfce4-desktop /desktop-icons/use-custom-label-text-color bool true
+set_prop xfce4-desktop /desktop-icons/use-custom-label-background-color bool true
+xfconf-query -c xfce4-desktop -p /desktop-icons/label-text-color -n -t double -t double -t double -t double -s 0.914 -s 0.918 -s 0.925 -s 1 2>/dev/null
+xfconf-query -c xfce4-desktop -p /desktop-icons/label-background-color -n -t double -t double -t double -t double -s 0 -s 0 -s 0 -s 0 2>/dev/null
 if systemd-detect-virt --vm -q; then
   set_prop xfce4-power-manager /xfce4-power-manager/dpms-enabled bool false
   set_prop xfce4-power-manager /xfce4-power-manager/blank-on-ac int 0
@@ -57,12 +61,16 @@ if systemd-detect-virt --vm -q; then
   set_prop xfce4-screensaver /lock/enabled bool false
 fi
 for _ in $(seq 20); do
-  props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep last-image)
-  [ -n "$props" ] && break
+  pgrep -u "$(id -u)" -x xfdesktop >/dev/null && break
   sleep 1
 done
-for p in $props; do
-  xfconf-query -c xfce4-desktop -p "$p" -s /usr/share/fiordland/wallpaper.png
+for s in /sys/class/drm/card*-*; do
+  [ "$(cat "$s/status" 2>/dev/null)" = connected ] || continue
+  m=monitor${s##*/card[0-9]-}
+  for w in 0 1 2 3; do
+    set_prop xfce4-desktop "/backdrop/screen0/$m/workspace$w/last-image" string /usr/share/fiordland/wallpaper.png
+    set_prop xfce4-desktop "/backdrop/screen0/$m/workspace$w/image-style" int 5
+  done
 done
 rm -f "$HOME/.config/autostart/fiordland-xfce-look.desktop"
 """
@@ -635,7 +643,7 @@ def desktop(cfg, user, keymap):
         home(user, ".local/share/fiordland/xfce-look.sh", XFCE_LOOK, 0o755)
         home(user, ".config/autostart/fiordland-xfce-look.desktop",
              "[Desktop Entry]\nType=Application\nName=Fiordland look\nNoDisplay=true\n"
-             f"Exec=/home/{user}/.local/share/fiordland/xfce-look.sh\n")
+             f"Exec=sh /home/{user}/.local/share/fiordland/xfce-look.sh\n")
     elif did == "hyprland":
         conf = from_system("/usr/share/fiordland/hyprland.lua")
         conf = re.sub(r'(?m)^local shell = "[^"]*"', f'local shell = "{"dots" if script else shell}"', conf)
