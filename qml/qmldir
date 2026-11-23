@@ -1,5 +1,5 @@
 singleton Theme 1.0 Theme.qml
-Sym 1.0 Sym.qml
-M3Button 1.0 M3Button.qml
-M3Field 1.0 M3Field.qml
+Glyph 1.0 Glyph.qml
+FButton 1.0 FButton.qml
+Field 1.0 Field.qml
 Chooser 1.0 Chooser.qml

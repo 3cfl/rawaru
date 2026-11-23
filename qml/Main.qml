@@ -15,8 +15,7 @@ ApplicationWindow {
     font.family: Theme.font
 
     Material.theme: Material.Dark
-    Material.accent: Theme.primary
-    Material.primary: Theme.primary
+    Material.accent: Theme.accent
     Material.background: Theme.bg
     Material.foreground: Theme.text
 
@@ -33,21 +32,22 @@ ApplicationWindow {
     property string password: ""
     property string password2: ""
     property bool autologin: false
+    property string kernel: "cachyos"
     property bool failed: false
     property string errorText: ""
 
     readonly property var steps: [
-        { icon: "public", label: "Region" },
-        { icon: "hard_drive", label: "Disk" },
-        { icon: "person", label: "You" },
-        { icon: "checklist", label: "Review" },
-        { icon: "download", label: "Install" }
+        { label: "Region", title: "Where are you?", sub: "Time zone and keyboard layout." },
+        { label: "Disk", title: "Choose a disk", sub: "Fiordland takes the whole disk." },
+        { label: "Account", title: "Your account", sub: "The user you'll log in as every day." },
+        { label: "Review", title: "Review", sub: "Nothing has been changed yet." },
+        { label: "Install", title: "", sub: "" }
     ]
     readonly property var reserved: ["root", "bin", "daemon", "mail", "ftp", "http", "nobody", "dbus", "systemd-network",
         "systemd-resolve", "systemd-timesync", "systemd-coredump", "uuidd", "greeter", "polkitd", "rtkit", "git", "avahi"]
     readonly property string usernameError: username === "" ? ""
-        : !/^[a-z_][a-z0-9_-]{0,31}$/.test(username) ? "Use lowercase letters, numbers, - and _"
-        : reserved.indexOf(username) >= 0 ? "That name is taken by the system" : ""
+        : !/^[a-z_][a-z0-9_-]{0,31}$/.test(username) ? "Lowercase letters, numbers, - and _ only"
+        : reserved.indexOf(username) >= 0 ? "That name is used by the system" : ""
     readonly property string hostnameError: hostname === "" ? ""
         : !/^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(hostname) ? "Letters, numbers and dashes only" : ""
     readonly property string passwordError: password2 !== "" && password !== password2 ? "Passwords don't match" : ""
@@ -87,7 +87,7 @@ ApplicationWindow {
         step = 5
         backend.install({
             disk: disk, locale: sysLocale, timezone: timezone, keymap: keymap, fullname: fullname,
-            username: username, hostname: hostname, password: password, autologin: autologin
+            username: username, hostname: hostname, password: password, autologin: autologin, kernel: kernel
         })
     }
 
@@ -110,22 +110,10 @@ ApplicationWindow {
     }
     ListModel { id: logModel }
 
-    component PageHeader: Row {
-        property string icon
-        property string title
-        property string subtitle
-        spacing: 18
-        Rectangle {
-            width: 56; height: 56; radius: 18
-            color: Theme.primaryContainer
-            Sym { anchors.centerIn: parent; text: parent.parent.icon; size: 28; fill: 1; color: Theme.inkPrimaryContainer }
-        }
-        Column {
-            spacing: 4
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: parent.parent.title; color: Theme.text; font.pixelSize: 28; font.weight: Font.DemiBold }
-            Text { text: parent.parent.subtitle; color: Theme.textVariant; font.pixelSize: 15 }
-        }
+    component Label: Text {
+        color: Theme.muted
+        font.family: Theme.font
+        font.pixelSize: 13
     }
 
     component Page: Item {
@@ -135,34 +123,62 @@ ApplicationWindow {
         opacity: active ? 1 : 0
         visible: opacity > 0
         enabled: active
-        transform: Translate { x: active ? 0 : (win.step > index ? -40 : 40); Behavior on x { NumberAnimation { duration: Theme.medium; easing.type: Easing.OutCubic } } }
+        transform: Translate { y: active ? 0 : 12; Behavior on y { NumberAnimation { duration: Theme.medium; easing.type: Easing.OutCubic } } }
         Behavior on opacity { NumberAnimation { duration: Theme.medium; easing.type: Easing.OutCubic } }
     }
 
-    component Card: Rectangle { radius: 24; color: Theme.surface2 }
+    component Header: Column {
+        property int index
+        spacing: 6
+        Text { text: "Step " + parent.index + " of 4"; color: Theme.faint; font.pixelSize: 12; font.weight: Font.Medium }
+        Text { text: win.steps[parent.index - 1].title; color: Theme.text; font.pixelSize: 26; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
+        Text { text: win.steps[parent.index - 1].sub; color: Theme.muted; font.pixelSize: 14 }
+    }
+
+    component Check: Rectangle {
+        property bool on: false
+        property color tint: Theme.accent
+        width: 18; height: 18; radius: 4
+        color: on ? tint : "transparent"
+        border.width: on ? 0 : 1.5
+        border.color: Theme.lineStrong
+        Glyph { anchors.centerIn: parent; visible: parent.on; kind: "check"; width: 14; height: 14; stroke: 2; color: Theme.accentInk }
+    }
+
+    component Radio: Rectangle {
+        property bool on: false
+        width: 18; height: 18; radius: 9
+        color: "transparent"
+        border.width: 1.5
+        border.color: on ? Theme.accent : Theme.lineStrong
+        Rectangle { anchors.centerIn: parent; width: 8; height: 8; radius: 4; color: Theme.accent; visible: parent.on }
+    }
 
     component ReviewRow: Item {
-        property string icon
         property string label
         property string value
         property int target: -1
+        property bool last: false
         width: parent.width
-        height: 64
-        Sym { id: ri; x: 20; anchors.verticalCenter: parent.verticalCenter; text: parent.icon; color: Theme.primary }
-        Column {
-            x: 60
+        height: 46
+        Text { x: 18; width: 150; anchors.verticalCenter: parent.verticalCenter; text: parent.label; color: Theme.muted; font.pixelSize: 13 }
+        Text {
+            x: 170
+            width: parent.width - 170 - 90
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 160
-            Text { text: parent.parent.label; color: Theme.textVariant; font.pixelSize: 12 }
-            Text { text: parent.parent.value; color: Theme.text; font.pixelSize: 15; elide: Text.ElideRight; width: parent.width }
+            text: parent.value
+            color: Theme.text
+            font.pixelSize: 14
+            elide: Text.ElideRight
         }
-        M3Button {
+        FButton {
             visible: parent.target >= 0
-            kind: "text"; text: "Change"
-            anchors.right: parent.right; anchors.rightMargin: 8
+            kind: "link"; text: "Change"
+            anchors.right: parent.right; anchors.rightMargin: 18
             anchors.verticalCenter: parent.verticalCenter
             onClicked: win.step = parent.target
         }
+        Rectangle { visible: !parent.last; anchors.bottom: parent.bottom; x: 18; width: parent.width - 36; height: 1; color: Theme.line }
     }
 
     Item {
@@ -170,7 +186,7 @@ ApplicationWindow {
         anchors.fill: parent
         opacity: win.step === 0 ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
 
         Image {
             anchors.fill: parent
@@ -178,66 +194,55 @@ ApplicationWindow {
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: 2080
             asynchronous: true
-            scale: win.step === 0 ? 1 : 1.06
-            Behavior on scale { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
         }
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.rgba(0.075, 0.075, 0.075, 0.94) }
-                GradientStop { position: 0.55; color: Qt.rgba(0.075, 0.075, 0.075, 0.55) }
-                GradientStop { position: 1.0; color: Qt.rgba(0.075, 0.075, 0.075, 0.05) }
+                GradientStop { position: 0.0; color: Qt.rgba(0.063, 0.067, 0.075, 0.35) }
+                GradientStop { position: 0.5; color: Qt.rgba(0.063, 0.067, 0.075, 0.55) }
+                GradientStop { position: 1.0; color: Qt.rgba(0.063, 0.067, 0.075, 0.96) }
             }
         }
+
+        Row {
+            id: langRow
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 28
+            spacing: 4
+            Text { text: win.localeName(win.sysLocale); color: Theme.text; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+            Glyph { kind: "chevron"; width: 16; height: 16; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+        }
+        MouseArea { anchors.fill: langRow; anchors.margins: -8; cursorShape: Qt.PointingHandCursor; onClicked: langPopup.open() }
+
         Column {
-            x: 72
-            anchors.verticalCenter: parent.verticalCenter
+            x: 64
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 64
             spacing: 0
-            Image { source: "logo.svg"; width: 76; height: 76; sourceSize: Qt.size(152, 152) }
-            Item { width: 1; height: 28 }
-            Text { text: "Kia ora."; color: Theme.primary; font.pixelSize: 64; font.weight: Font.Bold; font.letterSpacing: -1.5 }
-            Text { text: "Welcome to Fiordland Linux"; color: Theme.text; font.pixelSize: 30; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
-            Item { width: 1; height: 16 }
+            Text { text: "Fiordland"; color: Theme.text; font.pixelSize: 76; font.weight: Font.Bold; font.letterSpacing: -2.5 }
+            Item { width: 1; height: 12 }
             Text {
-                width: 440
+                width: 460
                 wrapMode: Text.WordWrap
-                text: "Fast, stable and yours. This will set up Fiordland on your computer in a few minutes. You can also keep trying it out first, nothing changes until you press Install."
-                color: Theme.textVariant
+                text: "Install it on this computer, or keep using the live session. Your disk isn't touched until the last step."
+                color: Theme.muted
                 font.pixelSize: 16
-                lineHeight: 1.35
+                lineHeight: 1.3
             }
-            Item { width: 1; height: 32 }
-            Rectangle {
-                width: langRow.implicitWidth + 40
-                height: 48
-                radius: 24
-                color: Qt.rgba(1, 1, 1, langMouse.containsMouse ? 0.12 : 0.07)
-                border.color: Qt.rgba(1, 1, 1, 0.12)
-                Behavior on color { ColorAnimation { duration: Theme.fast } }
-                Row {
-                    id: langRow
-                    anchors.centerIn: parent
-                    spacing: 10
-                    Sym { text: "translate"; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: win.localeName(win.sysLocale); color: Theme.text; font.pixelSize: 15; anchors.verticalCenter: parent.verticalCenter }
-                    Sym { text: "expand_more"; color: Theme.textVariant; anchors.verticalCenter: parent.verticalCenter }
-                }
-                MouseArea { id: langMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: langPopup.open() }
-            }
-            Item { width: 1; height: 20 }
+            Item { width: 1; height: 28 }
             Row {
-                spacing: 12
-                M3Button { text: "Install Fiordland"; icon: "arrow_forward"; onClicked: win.step = 1; implicitHeight: 52 }
-                M3Button { text: "Keep trying it"; kind: "outlined"; implicitHeight: 52; onClicked: backend.quit() }
+                spacing: 10
+                FButton { text: "Install"; implicitWidth: 120; implicitHeight: 42; onClicked: win.step = 1 }
+                FButton { text: "Keep trying it"; kind: "ghost"; implicitHeight: 42; onClicked: backend.quit() }
             }
         }
         Text {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: 24
-            text: "Fiordland 1  ·  rawaru"
-            color: Qt.rgba(1, 1, 1, 0.5)
+            anchors.margins: 28
+            text: backend.dryRun ? "Preview mode" : "Fiordland 1"
+            color: Theme.faint
             font.pixelSize: 12
         }
     }
@@ -245,23 +250,21 @@ ApplicationWindow {
     Popup {
         id: langPopup
         anchors.centerIn: parent
-        width: 460
-        height: 520
+        width: 440
+        height: 500
         modal: true
-        padding: 0
-        background: Rectangle { radius: 28; color: Theme.surface1; border.color: Theme.outlineVariant }
-        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.fast } NumberAnimation { property: "scale"; from: 0.94; to: 1; duration: Theme.medium; easing.type: Easing.OutCubic } }
+        padding: 20
+        background: Rectangle { radius: 12; color: Theme.raised; border.color: Theme.line }
+        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.fast } }
         exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: Theme.fast } }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.5) }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         Column {
             anchors.fill: parent
-            anchors.margins: 20
             spacing: 14
-            Text { text: "System language"; color: Theme.text; font.pixelSize: 22; font.weight: Font.DemiBold; leftPadding: 4 }
+            Text { text: "Language"; color: Theme.text; font.pixelSize: 18; font.weight: Font.DemiBold }
             Chooser {
                 width: parent.width
-                height: parent.height - 50
-                color: Theme.surface2
+                height: parent.height - 40
                 items: backend.locales
                 primaryOf: (x) => win.localeName(x)
                 secondaryOf: (x) => x.replace(".UTF-8", "")
@@ -277,65 +280,59 @@ ApplicationWindow {
         anchors.fill: parent
         opacity: win.step > 0 ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
 
         Rectangle {
             id: rail
-            width: 248
+            width: 220
             height: parent.height
-            color: Theme.surface1
+            color: Theme.panel
+            Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.line }
 
-            Row {
-                x: 28; y: 30
-                spacing: 12
-                Image { source: "logo.svg"; width: 36; height: 36; sourceSize: Qt.size(72, 72) }
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    Text { text: "Fiordland"; color: Theme.text; font.pixelSize: 18; font.weight: Font.Bold }
-                    Text { text: "Installer"; color: Theme.textVariant; font.pixelSize: 12 }
-                }
-            }
+            Text { x: 28; y: 30; text: "Fiordland"; color: Theme.text; font.pixelSize: 17; font.weight: Font.Bold; font.letterSpacing: -0.3 }
 
             Column {
-                x: 16; y: 112
-                width: parent.width - 32
-                spacing: 4
+                x: 0; y: 92
+                width: parent.width - 1
                 Repeater {
                     model: win.steps
-                    delegate: Rectangle {
+                    delegate: Item {
                         required property var modelData
                         required property int index
                         readonly property int num: index + 1
-                        readonly property bool current: win.step === num || (win.step === 6 && num === 5 && win.failed)
-                        readonly property bool done: win.step > num && !(win.step === 6 && num === 5 && win.failed)
+                        readonly property bool current: win.step === num || (win.step === 6 && num === 5)
+                        readonly property bool done: win.step > num && !(win.step === 6 && num === 5)
                         width: parent.width
-                        height: 52
-                        radius: 26
-                        color: current ? Theme.primaryContainer : "transparent"
-                        Behavior on color { ColorAnimation { duration: Theme.medium } }
+                        height: 38
                         Rectangle {
-                            x: 12
+                            width: 2; height: 18
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 28; height: 28; radius: 14
-                            color: parent.done ? Theme.primary : "transparent"
-                            border.width: parent.done ? 0 : 1.5
-                            border.color: parent.current ? Theme.inkPrimaryContainer : Theme.outline
-                            Behavior on color { ColorAnimation { duration: Theme.medium } }
-                            Sym {
-                                anchors.centerIn: parent
-                                text: parent.parent.done ? "check" : parent.parent.modelData.icon
-                                size: 17
-                                fill: parent.parent.current ? 1 : 0
-                                color: parent.parent.done ? Theme.inkPrimary : parent.parent.current ? Theme.inkPrimaryContainer : Theme.textVariant
-                            }
+                            color: Theme.accent
+                            opacity: parent.current ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
                         }
                         Text {
-                            x: 54
+                            x: 28; width: 18
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !parent.done
+                            text: parent.num
+                            color: parent.current ? Theme.accent : Theme.faint
+                            font.pixelSize: 13
+                            font.features: { "tnum": 1 }
+                        }
+                        Glyph {
+                            x: 27
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: parent.done
+                            kind: "check"; width: 14; height: 14; color: Theme.muted
+                        }
+                        Text {
+                            x: 50
                             anchors.verticalCenter: parent.verticalCenter
                             text: parent.modelData.label
-                            color: parent.current ? Theme.inkPrimaryContainer : parent.done ? Theme.text : Theme.textVariant
-                            font.pixelSize: 15
-                            font.weight: parent.current ? Font.DemiBold : Font.Medium
+                            color: parent.current ? Theme.text : parent.done ? Theme.muted : Theme.faint
+                            font.pixelSize: 14
+                            font.weight: parent.current ? Font.Medium : Font.Normal
                         }
                     }
                 }
@@ -345,9 +342,9 @@ ApplicationWindow {
                 x: 28
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 26
-                spacing: 4
-                Text { text: backend.uefi ? "UEFI system" : "BIOS system"; color: Theme.textVariant; font.pixelSize: 12 }
-                Text { text: backend.dryRun ? "Preview mode, nothing is written" : "Fiordland 1"; color: backend.dryRun ? Theme.primary : Theme.textVariant; font.pixelSize: 12 }
+                spacing: 3
+                Text { text: backend.uefi ? "UEFI system" : "BIOS system"; color: Theme.faint; font.pixelSize: 12 }
+                Text { visible: backend.dryRun; text: "Preview, nothing is written"; color: Theme.accent; font.pixelSize: 12 }
             }
         }
 
@@ -357,26 +354,26 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: bar.top
-            anchors.leftMargin: 44
-            anchors.rightMargin: 44
-            anchors.topMargin: 40
-            clip: false
+            anchors.leftMargin: 48
+            anchors.rightMargin: 48
+            anchors.topMargin: 44
 
             Page {
                 index: 1
-                PageHeader { id: h1; icon: "public"; title: "Where are you?"; subtitle: "Pick your time zone and keyboard layout." }
+                Header { id: h1; index: 1 }
                 RowLayout {
                     anchors.top: h1.bottom
                     anchors.topMargin: 28
                     anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 8
                     width: parent.width
-                    spacing: 16
+                    spacing: 20
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        spacing: 10
-                        Text { text: "Time zone"; color: Theme.textVariant; font.pixelSize: 13; font.weight: Font.DemiBold; leftPadding: 4 }
+                        spacing: 8
+                        Label { text: "Time zone" }
                         Chooser {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -392,8 +389,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        spacing: 10
-                        Text { text: "Keyboard"; color: Theme.textVariant; font.pixelSize: 13; font.weight: Font.DemiBold; leftPadding: 4 }
+                        spacing: 8
+                        Label { text: "Keyboard" }
                         Chooser {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -405,14 +402,14 @@ ApplicationWindow {
                             placeholder: "Search layouts"
                             onPicked: (k) => win.keymap = k
                         }
-                        M3Field { Layout.fillWidth: true; label: "Type here to test your keyboard"; icon: "keyboard" }
+                        Field { Layout.fillWidth: true; Layout.topMargin: 6; placeholder: "Type here to test the layout" }
                     }
                 }
             }
 
             Page {
                 index: 2
-                PageHeader { id: h2; icon: "hard_drive"; title: "Where should it go?"; subtitle: "Fiordland will use the whole disk you choose." }
+                Header { id: h2; index: 2 }
                 Flickable {
                     anchors.top: h2.bottom
                     anchors.topMargin: 28
@@ -424,129 +421,104 @@ ApplicationWindow {
                     Column {
                         id: diskCol
                         width: parent.width
-                        spacing: 10
-                        Repeater {
-                            model: backend.disks
-                            delegate: Rectangle {
-                                id: dcard
-                                required property var modelData
-                                readonly property bool selected: win.disk === modelData.path
-                                width: diskCol.width
-                                height: 84
-                                radius: 24
-                                color: selected ? Theme.primaryContainer : dmouse.containsMouse && modelData.big ? Theme.surface3 : Theme.surface2
-                                border.width: selected ? 2 : 0
-                                border.color: Theme.primary
-                                opacity: modelData.big ? 1 : 0.5
-                                Behavior on color { ColorAnimation { duration: Theme.fast } }
-                                Rectangle {
-                                    x: 18
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 48; height: 48; radius: 16
-                                    color: dcard.selected ? Theme.primary : Theme.surface4
-                                    Sym {
-                                        anchors.centerIn: parent
-                                        text: dcard.modelData.kind === "usb" ? "usb" : dcard.modelData.kind === "nvme" ? "memory" : "hard_drive"
-                                        fill: 1
-                                        color: dcard.selected ? Theme.inkPrimary : Theme.text
+                        spacing: 16
+                        Rectangle {
+                            width: parent.width
+                            height: Math.max(diskList.height, 64)
+                            radius: Theme.radius
+                            color: Theme.panel
+                            border.color: Theme.line
+                            Column {
+                                id: diskList
+                                width: parent.width
+                                Repeater {
+                                    model: backend.disks
+                                    delegate: Item {
+                                        id: drow
+                                        required property var modelData
+                                        required property int index
+                                        readonly property bool selected: win.disk === modelData.path
+                                        width: diskList.width
+                                        height: 64
+                                        opacity: modelData.big ? 1 : 0.45
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            anchors.margins: 1
+                                            radius: Theme.radius - 1
+                                            color: dmouse.containsMouse && drow.modelData.big ? Theme.hover : "transparent"
+                                        }
+                                        Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: drow.selected }
+                                        Column {
+                                            x: 50
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 3
+                                            Text { text: drow.modelData.model; color: Theme.text; font.pixelSize: 14; font.weight: Font.Medium }
+                                            Text {
+                                                text: drow.modelData.path + "   " + (drow.modelData.big
+                                                    ? (drow.modelData.parts > 0 ? drow.modelData.parts + " partition" + (drow.modelData.parts > 1 ? "s" : "") : "empty")
+                                                    : "too small, needs 20 GB")
+                                                color: Theme.faint
+                                                font.pixelSize: 12
+                                                font.family: Theme.mono
+                                            }
+                                        }
+                                        Text {
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 18
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: drow.modelData.sizeText
+                                            color: Theme.text
+                                            font.pixelSize: 14
+                                            font.features: { "tnum": 1 }
+                                        }
+                                        Rectangle {
+                                            visible: drow.index < backend.disks.length - 1
+                                            anchors.bottom: parent.bottom
+                                            x: 18; width: parent.width - 36; height: 1
+                                            color: Theme.line
+                                        }
+                                        MouseArea {
+                                            id: dmouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: drow.modelData.big ? Qt.PointingHandCursor : Qt.ForbiddenCursor
+                                            onClicked: if (drow.modelData.big && win.disk !== drow.modelData.path) { win.disk = drow.modelData.path; win.understood = false }
+                                        }
                                     }
                                 }
-                                Column {
-                                    x: 82
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 3
-                                    Text { text: dcard.modelData.model; color: dcard.selected ? Theme.inkPrimaryContainer : Theme.text; font.pixelSize: 16; font.weight: Font.DemiBold }
-                                    Text {
-                                        text: dcard.modelData.path + "  ·  " + (dcard.modelData.big ? (dcard.modelData.parts > 0 ? dcard.modelData.parts + " partition" + (dcard.modelData.parts > 1 ? "s" : "") : "Empty") : "Too small, needs 20 GB")
-                                        color: Theme.textVariant
-                                        font.pixelSize: 13
-                                    }
-                                }
-                                Text {
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 24
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: dcard.modelData.sizeText
-                                    color: dcard.selected ? Theme.inkPrimaryContainer : Theme.text
-                                    font.pixelSize: 18
-                                    font.weight: Font.DemiBold
-                                }
-                                MouseArea {
-                                    id: dmouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: dcard.modelData.big ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                                    onClicked: if (dcard.modelData.big) { win.disk = dcard.modelData.path; win.understood = false }
-                                }
+                            }
+                            Text {
+                                visible: backend.disks.length === 0
+                                anchors.centerIn: parent
+                                text: "No disks found. Plug one in and it shows up here."
+                                color: Theme.muted
+                                font.pixelSize: 14
                             }
                         }
                         Text {
-                            visible: backend.disks.length === 0
-                            text: "No disks found. Plug one in and it will show up here."
-                            color: Theme.textVariant
-                            font.pixelSize: 15
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "Btrfs with compression and automatic snapshots, zram swap, " + (backend.uefi ? "systemd-boot." : "GRUB.")
+                            color: Theme.faint
+                            font.pixelSize: 13
                         }
-                        Item { width: 1; height: 8 }
-                        Row {
-                            spacing: 8
-                            Repeater {
-                                model: [["bolt", "Btrfs, compressed"], ["history", "Automatic snapshots"], ["memory_alt", "zram swap"], [backend.uefi ? "verified_user" : "settings", backend.uefi ? "systemd-boot" : "GRUB"]]
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    height: 34
-                                    width: chipRow.implicitWidth + 28
-                                    radius: 10
-                                    color: "transparent"
-                                    border.color: Theme.outline
-                                    Row {
-                                        id: chipRow
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        Sym { text: modelData[0]; size: 18; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: modelData[1]; color: Theme.textVariant; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-                                    }
-                                }
-                            }
-                        }
-                        Item { width: 1; height: 8 }
-                        Rectangle {
+                        Item {
                             visible: win.disk !== ""
-                            width: diskCol.width
-                            height: 76
-                            radius: 24
-                            color: Theme.dangerContainer
-                            Sym { x: 22; anchors.verticalCenter: parent.verticalCenter; text: "warning"; fill: 1; color: Theme.danger }
-                            Text {
-                                x: 60
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - 60 - understandRow.width - 30
-                                wrapMode: Text.WordWrap
-                                text: "Everything on " + (win.diskInfo ? win.diskInfo.model + " (" + win.diskInfo.sizeText + ")" : "") + " will be erased."
-                                color: Theme.text
-                                font.pixelSize: 14
-                            }
+                            width: parent.width
+                            height: 40
                             Row {
-                                id: understandRow
-                                anchors.right: parent.right
-                                anchors.rightMargin: 20
+                                id: eraseRow
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 10
-                                Rectangle {
-                                    width: 24; height: 24; radius: 7
+                                spacing: 12
+                                Check { on: win.understood; tint: Theme.danger; anchors.verticalCenter: parent.verticalCenter }
+                                Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    color: win.understood ? Theme.danger : "transparent"
-                                    border.width: win.understood ? 0 : 2
-                                    border.color: Theme.danger
-                                    Sym { anchors.centerIn: parent; visible: win.understood; text: "check"; size: 18; color: Theme.dangerContainer }
+                                    text: "Erase everything on " + (win.diskInfo ? win.diskInfo.model + " (" + win.diskInfo.sizeText + ")" : "")
+                                    color: win.understood ? Theme.danger : Theme.text
+                                    font.pixelSize: 14
                                 }
-                                Text { text: "I understand"; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
                             }
-                            MouseArea {
-                                anchors.fill: understandRow
-                                anchors.margins: -10
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: win.understood = !win.understood
-                            }
+                            MouseArea { anchors.fill: eraseRow; anchors.margins: -8; cursorShape: Qt.PointingHandCursor; onClicked: win.understood = !win.understood }
                         }
                     }
                 }
@@ -554,117 +526,152 @@ ApplicationWindow {
 
             Page {
                 index: 3
-                PageHeader { id: h3; icon: "person"; title: "Who are you?"; subtitle: "This is the account you'll use every day." }
+                Header { id: h3; index: 3 }
                 GridLayout {
                     anchors.top: h3.bottom
-                    anchors.topMargin: 32
-                    width: Math.min(parent.width, 680)
+                    anchors.topMargin: 28
+                    width: Math.min(parent.width, 620)
                     columns: 2
                     columnSpacing: 16
-                    rowSpacing: 14
-                    M3Field {
+                    rowSpacing: 16
+                    Field {
                         Layout.fillWidth: true
                         Layout.columnSpan: 2
-                        label: "Your name"
-                        icon: "badge"
+                        label: "Name"
                         text: win.fullname
                         onEdited: win.fullname = text
                     }
-                    M3Field {
+                    Field {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.alignment: Qt.AlignTop
                         label: "Username"
-                        icon: "alternate_email"
                         text: win.username
                         error: win.usernameError
                         onEdited: { win.usernameTouched = true; win.username = text }
                     }
-                    M3Field {
+                    Field {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.alignment: Qt.AlignTop
                         label: "Computer name"
-                        icon: "computer"
                         text: win.hostname
                         error: win.hostnameError
                         onEdited: win.hostname = text
                     }
-                    M3Field {
+                    Field {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.alignment: Qt.AlignTop
                         label: "Password"
-                        icon: "lock"
                         password: true
                         hint: win.password !== "" && win.password.length < 6 ? "Short passwords are easy to guess" : ""
                         onEdited: win.password = text
                     }
-                    M3Field {
+                    Field {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.alignment: Qt.AlignTop
                         label: "Confirm password"
-                        icon: "lock_reset"
                         password: true
                         error: win.passwordError
                         onEdited: win.password2 = text
                     }
-                    Rectangle {
+                    Item {
                         Layout.columnSpan: 2
                         Layout.fillWidth: true
-                        Layout.topMargin: 6
-                        height: 72
-                        radius: 24
-                        color: Theme.surface2
-                        Sym { x: 20; anchors.verticalCenter: parent.verticalCenter; text: "login"; color: Theme.primary }
-                        Column {
-                            x: 58
-                            anchors.verticalCenter: parent.verticalCenter
-                            Text { text: "Log in automatically"; color: Theme.text; font.pixelSize: 15; font.weight: Font.Medium }
-                            Text { text: "Skip the login screen when the computer starts"; color: Theme.textVariant; font.pixelSize: 13 }
-                        }
-                        Rectangle {
-                            id: sw
-                            anchors.right: parent.right
-                            anchors.rightMargin: 20
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 52; height: 32; radius: 16
-                            color: win.autologin ? Theme.primary : Theme.surface4
-                            border.width: win.autologin ? 0 : 2
-                            border.color: Theme.outline
-                            Behavior on color { ColorAnimation { duration: Theme.fast } }
-                            Rectangle {
-                                width: win.autologin ? 24 : 16
-                                height: width
-                                radius: width / 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                x: win.autologin ? parent.width - width - 4 : 8
-                                color: win.autologin ? Theme.inkPrimary : Theme.textVariant
-                                Behavior on x { NumberAnimation { duration: Theme.fast; easing.type: Easing.OutCubic } }
-                                Behavior on width { NumberAnimation { duration: Theme.fast } }
-                                Sym { anchors.centerIn: parent; visible: win.autologin; text: "check"; size: 16; color: Theme.primary }
+                        Layout.topMargin: 4
+                        implicitHeight: 44
+                        Row {
+                            id: autoRow
+                            spacing: 12
+                            Check { on: win.autologin; y: 2 }
+                            Column {
+                                spacing: 3
+                                Text { text: "Log in automatically"; color: Theme.text; font.pixelSize: 14 }
+                                Text { text: "Skip the login screen when the computer starts."; color: Theme.faint; font.pixelSize: 12 }
                             }
                         }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.autologin = !win.autologin }
+                        MouseArea { anchors.fill: autoRow; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: win.autologin = !win.autologin }
                     }
                 }
             }
 
             Page {
                 index: 4
-                PageHeader { id: h4; icon: "checklist"; title: "Ready when you are"; subtitle: "Check everything looks right, then press Install." }
-                Card {
+                Header { id: h4; index: 4 }
+                Column {
                     anchors.top: h4.bottom
                     anchors.topMargin: 28
                     width: parent.width
-                    height: reviewCol.height + 16
-                    Column {
-                        id: reviewCol
-                        y: 8
+                    spacing: 20
+                    Rectangle {
                         width: parent.width
-                        ReviewRow { icon: "translate"; label: "Language"; value: win.localeName(win.sysLocale); target: 0 }
-                        ReviewRow { icon: "schedule"; label: "Time zone"; value: win.timezone.replace(/_/g, " "); target: 1 }
-                        ReviewRow { icon: "keyboard"; label: "Keyboard"; value: win.keymapName(win.keymap); target: 1 }
-                        ReviewRow { icon: "hard_drive"; label: "Disk (will be erased)"; value: win.diskInfo ? win.diskInfo.model + "  ·  " + win.diskInfo.path + "  ·  " + win.diskInfo.sizeText : ""; target: 2 }
-                        ReviewRow { icon: "person"; label: "Account"; value: (win.fullname ? win.fullname + "  ·  " : "") + win.username + "@" + win.hostname + (win.autologin ? "  ·  logs in automatically" : ""); target: 3 }
-                        ReviewRow { icon: "deployed_code"; label: "Software"; value: "Fiordland desktop, Firefox, tawaki, Flathub" }
+                        height: reviewCol.height
+                        radius: Theme.radius
+                        color: Theme.panel
+                        border.color: Theme.line
+                        Column {
+                            id: reviewCol
+                            width: parent.width
+                            ReviewRow { label: "Language"; value: win.localeName(win.sysLocale); target: 0 }
+                            ReviewRow { label: "Time zone"; value: win.timezone.replace(/_/g, " "); target: 1 }
+                            ReviewRow { label: "Keyboard"; value: win.keymapName(win.keymap); target: 1 }
+                            ReviewRow { label: "Disk"; value: win.diskInfo ? win.diskInfo.model + ", " + win.diskInfo.sizeText + ", will be erased" : ""; target: 2 }
+                            ReviewRow { label: "Account"; value: (win.fullname ? win.fullname + ", " : "") + win.username + "@" + win.hostname + (win.autologin ? ", automatic login" : ""); target: 3 }
+                            ReviewRow { label: "Graphics"; value: backend.graphics; last: true }
+                        }
+                    }
+                    Column {
+                        width: parent.width
+                        spacing: 8
+                        Label { text: "Kernel" }
+                        Rectangle {
+                            width: parent.width
+                            height: kcol.height
+                            radius: Theme.radius
+                            color: Theme.panel
+                            border.color: Theme.line
+                            Column {
+                                id: kcol
+                                width: parent.width
+                                Repeater {
+                                    model: [
+                                        ["cachyos", "CachyOS kernel", "Tuned for responsiveness and games. The Arch kernel stays installed as a backup boot option."],
+                                        ["arch", "Arch kernel", "The stock Arch Linux kernel, nothing else added."]
+                                    ]
+                                    delegate: Item {
+                                        id: krow
+                                        required property var modelData
+                                        required property int index
+                                        width: kcol.width
+                                        height: 60
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            anchors.margins: 1
+                                            radius: Theme.radius - 1
+                                            color: kmouse.containsMouse ? Theme.hover : "transparent"
+                                        }
+                                        Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: win.kernel === krow.modelData[0] }
+                                        Column {
+                                            x: 50
+                                            width: parent.width - 70
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 3
+                                            Text { text: krow.modelData[1]; color: Theme.text; font.pixelSize: 14 }
+                                            Text { text: krow.modelData[2]; color: Theme.faint; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight }
+                                        }
+                                        Rectangle {
+                                            visible: krow.index === 0
+                                            anchors.bottom: parent.bottom
+                                            x: 18; width: parent.width - 36; height: 1
+                                            color: Theme.line
+                                        }
+                                        MouseArea { id: kmouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.kernel = krow.modelData[0] }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -672,103 +679,72 @@ ApplicationWindow {
             Page {
                 index: 5
                 Column {
-                    anchors.centerIn: parent
-                    anchors.verticalCenterOffset: logPane.visible ? -150 : -20
-                    Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: Theme.medium; easing.type: Easing.OutCubic } }
+                    id: prog
+                    y: logPane.visible ? 40 : Math.max(40, (parent.height - height) / 2 - 20)
+                    Behavior on y { NumberAnimation { duration: Theme.medium; easing.type: Easing.OutCubic } }
                     width: Math.min(parent.width, 560)
+                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 0
-                    Image {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: "logo.svg"; width: 84; height: 84; sourceSize: Qt.size(168, 168)
-                        SequentialAnimation on y {
-                            running: win.step === 5
-                            loops: Animation.Infinite
-                            NumberAnimation { from: 0; to: -8; duration: 900; easing.type: Easing.InOutSine }
-                            NumberAnimation { from: -8; to: 0; duration: 900; easing.type: Easing.InOutSine }
+                    Text { text: "Installing Fiordland"; color: Theme.text; font.pixelSize: 26; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
+                    Item { width: 1; height: 8 }
+                    Item {
+                        width: parent.width
+                        height: 20
+                        Text {
+                            width: parent.width - 50
+                            elide: Text.ElideRight
+                            text: backend.status || "Getting ready"
+                            color: Theme.muted
+                            font.pixelSize: 14
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            text: Math.round(backend.progress * 100) + "%"
+                            color: Theme.muted
+                            font.pixelSize: 14
+                            font.features: { "tnum": 1 }
                         }
                     }
-                    Item { width: 1; height: 26 }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Installing Fiordland"
-                        color: Theme.text
-                        font.pixelSize: 28
-                        font.weight: Font.DemiBold
-                    }
-                    Item { width: 1; height: 6 }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                        text: backend.status || "Getting ready"
-                        color: Theme.textVariant
-                        font.pixelSize: 15
-                    }
-                    Item { width: 1; height: 26 }
+                    Item { width: 1; height: 16 }
                     Rectangle {
                         width: parent.width
-                        height: 12
-                        radius: 6
-                        color: Theme.surface3
+                        height: 4
+                        radius: 2
+                        color: Theme.line
                         Rectangle {
                             height: parent.height
-                            radius: 6
-                            width: Math.max(12, parent.width * backend.progress)
-                            color: Theme.primary
+                            radius: 2
+                            width: parent.width * backend.progress
+                            color: Theme.accent
                             Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
                         }
                     }
-                    Item { width: 1; height: 10 }
-                    Text {
-                        anchors.right: parent.right
-                        text: Math.round(backend.progress * 100) + "%"
-                        color: Theme.textVariant
-                        font.pixelSize: 13
-                        font.features: { "tnum": 1 }
-                    }
-                    Item { width: 1; height: 22 }
-                    Card {
-                        id: tipCard
+                    Item { width: 1; height: 36 }
+                    Item {
+                        id: tip
                         width: parent.width
-                        height: 92
-                        color: Theme.surface2
-                        property int tip: 0
+                        height: 64
+                        property int n: 0
                         readonly property var tips: [
-                            ["deployed_code", "One command for every app", "tawaki install spotify finds the cleanest source for you: pacman, Flathub or the AUR."],
-                            ["history", "Undo almost anything", "Your system takes Btrfs snapshots automatically, so a bad update is never the end."],
-                            ["keyboard_command_key", "Super + Space", "Opens the app launcher. Super + Return opens a terminal, Super + Q closes a window."],
-                            ["update", "Stay fresh", "tawaki update updates system packages, Flatpaks and AUR packages in one go."],
-                            ["pets", "Why a penguin?", "The tawaki is a crested penguin that lives in the rainforests of Fiordland, New Zealand."]
+                            ["tawaki install spotify", "One command for every app. tawaki picks pacman, Flathub or the AUR for you."],
+                            ["tawaki update", "Updates system packages, Flatpaks and AUR packages together."],
+                            ["Snapshots", "Btrfs snapshots are taken before every update, so a bad one can be rolled back."],
+                            ["Super + Space", "Opens the launcher. Super + Return opens a terminal, Super + Q closes a window."]
                         ]
-                        Timer { interval: 6500; running: win.step === 5; repeat: true; onTriggered: { tipBody.opacity = 0; tipSwap.start() } }
-                        Timer { id: tipSwap; interval: 220; onTriggered: { tipCard.tip = (tipCard.tip + 1) % tipCard.tips.length; tipBody.opacity = 1 } }
-                        Row {
+                        Timer { interval: 7000; running: win.step === 5; repeat: true; onTriggered: { tipBody.opacity = 0; tipSwap.start() } }
+                        Timer { id: tipSwap; interval: 200; onTriggered: { tip.n = (tip.n + 1) % tip.tips.length; tipBody.opacity = 1 } }
+                        Column {
                             id: tipBody
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: 20
-                            spacing: 16
-                            Behavior on opacity { NumberAnimation { duration: 220 } }
-                            Rectangle {
-                                width: 48; height: 48; radius: 16
-                                color: Theme.primaryContainer
-                                anchors.verticalCenter: parent.verticalCenter
-                                Sym { anchors.centerIn: parent; text: tipCard.tips[tipCard.tip][0]; color: Theme.inkPrimaryContainer; fill: 1 }
-                            }
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: tipCard.width - 104
-                                spacing: 3
-                                Text { text: tipCard.tips[tipCard.tip][1]; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                Text { text: tipCard.tips[tipCard.tip][2]; color: Theme.textVariant; font.pixelSize: 13; wrapMode: Text.WordWrap; width: parent.width }
-                            }
+                            width: parent.width
+                            spacing: 4
+                            Behavior on opacity { NumberAnimation { duration: 200 } }
+                            Text { text: tip.tips[tip.n][0]; color: Theme.text; font.pixelSize: 13; font.family: Theme.mono }
+                            Text { text: tip.tips[tip.n][1]; color: Theme.faint; font.pixelSize: 13; wrapMode: Text.WordWrap; width: parent.width }
                         }
                     }
-                    Item { width: 1; height: 12 }
-                    M3Button {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        kind: "text"
-                        icon: logPane.visible ? "expand_less" : "terminal"
+                    Item { width: 1; height: 8 }
+                    FButton {
+                        kind: "link"
                         text: logPane.visible ? "Hide details" : "Show details"
                         onClicked: logPane.visible = !logPane.visible
                     }
@@ -776,15 +752,15 @@ ApplicationWindow {
                 Rectangle {
                     id: logPane
                     visible: false
+                    anchors.top: prog.bottom
+                    anchors.topMargin: 20
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 8
+                    anchors.bottomMargin: 32
                     width: parent.width
-                    height: 230
-                    radius: 20
-                    color: "#0a0e12"
-                    border.color: Theme.outlineVariant
+                    radius: Theme.radius
+                    color: "#0b0c0e"
+                    border.color: Theme.line
                     ListView {
-                        id: logView
                         anchors.fill: parent
                         anchors.margins: 14
                         model: logModel
@@ -794,7 +770,7 @@ ApplicationWindow {
                             required property string line
                             width: ListView.view.width
                             text: line
-                            color: line.startsWith("$ ") ? Theme.primary : line.startsWith("error") ? Theme.danger : Theme.textVariant
+                            color: line.startsWith("$ ") ? Theme.accent : line.startsWith("error") ? Theme.danger : Theme.faint
                             font.family: Theme.mono
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -806,60 +782,37 @@ ApplicationWindow {
             Page {
                 index: 6
                 Column {
-                    anchors.centerIn: parent
-                    anchors.verticalCenterOffset: 20
-                    width: Math.min(parent.width, 520)
+                    y: Math.max(40, (parent.height - height) / 2 - 20)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Math.min(parent.width, 560)
                     spacing: 0
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: 104; height: 104; radius: 52
-                        color: win.failed ? Theme.dangerContainer : Theme.primaryContainer
-                        scale: win.step === 6 ? 1 : 0.6
-                        Behavior on scale { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
-                        Sym { anchors.centerIn: parent; text: win.failed ? "error" : "check_circle"; size: 54; fill: 1; color: win.failed ? Theme.danger : Theme.primary }
-                    }
-                    Item { width: 1; height: 28 }
                     Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: win.failed ? "That didn't work" : "Fiordland is ready"
-                        color: Theme.text
-                        font.pixelSize: 32
-                        font.weight: Font.Bold
+                        text: win.failed ? "Installation failed" : "Done"
+                        color: win.failed ? Theme.danger : Theme.text
+                        font.pixelSize: 34
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: -0.6
                     }
                     Item { width: 1; height: 10 }
                     Text {
                         width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         text: win.failed
-                            ? (win.errorText + "\nYour disk may be partly set up. You can try again, or save the log and ask for help.")
-                            : "Restart your computer and remove the install media. Welcome to the colony, " + (win.fullname.split(" ")[0] || win.username) + "."
-                        color: Theme.textVariant
+                            ? win.errorText + "\n\nThe disk may be partly set up. Try again, or save the log and ask for help."
+                            : "Fiordland is installed. Restart and remove the install media, then log in as " + win.username + "."
+                        color: Theme.muted
                         font.pixelSize: 15
-                        lineHeight: 1.35
+                        lineHeight: 1.3
                     }
-                    Item { width: 1; height: 32 }
+                    Item { width: 1; height: 28 }
                     Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 12
-                        M3Button {
-                            visible: !win.failed
-                            text: "Restart now"; icon: "restart_alt"; implicitHeight: 52
-                            onClicked: backend.reboot()
-                        }
-                        M3Button {
-                            visible: !win.failed
-                            text: "Keep exploring"; kind: "outlined"; implicitHeight: 52
-                            onClicked: backend.quit()
-                        }
-                        M3Button {
+                        spacing: 10
+                        FButton { visible: !win.failed; text: "Restart now"; implicitHeight: 42; onClicked: backend.reboot() }
+                        FButton { visible: !win.failed; text: "Keep exploring"; kind: "ghost"; implicitHeight: 42; onClicked: backend.quit() }
+                        FButton { visible: win.failed; text: "Try again"; implicitHeight: 42; onClicked: win.step = 4 }
+                        FButton {
                             visible: win.failed
-                            text: "Try again"; icon: "refresh"; implicitHeight: 52
-                            onClicked: win.step = 4
-                        }
-                        M3Button {
-                            visible: win.failed
-                            text: "Save log"; kind: "outlined"; icon: "save"; implicitHeight: 52
+                            text: "Save log"; kind: "ghost"; implicitHeight: 42
                             onClicked: { backend.saveLog(); text = "Saved to ~/rawaru.log" }
                         }
                     }
@@ -872,19 +825,19 @@ ApplicationWindow {
             anchors.left: rail.right
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: 92
+            height: 76
             visible: win.step >= 1 && win.step <= 4
+            Rectangle { width: parent.width; height: 1; color: Theme.line }
             Row {
                 anchors.right: parent.right
-                anchors.rightMargin: 44
+                anchors.rightMargin: 48
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
-                M3Button { kind: "text"; text: "Back"; onClicked: win.step-- }
-                M3Button {
-                    text: win.step === 4 ? "Install" : "Next"
-                    icon: win.step === 4 ? "download" : "arrow_forward"
+                FButton { kind: "ghost"; text: "Back"; onClicked: win.step-- }
+                FButton {
+                    text: win.step === 4 ? "Install" : "Continue"
+                    implicitWidth: 112
                     enabled: win.canNext
-                    implicitHeight: 48
                     onClicked: win.next()
                 }
             }

@@ -3,6 +3,6 @@ Type=Application
 Name=Install Fiordland
 Comment=Install Fiordland Linux on this computer
 Exec=rawaru
-Icon=fiordland
+Icon=system-software-install
 Terminal=false
 Categories=System;

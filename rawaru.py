@@ -20,7 +20,7 @@ def main():
     app.setApplicationName("rawaru")
     app.setApplicationDisplayName("Install Fiordland")
     app.setDesktopFileName("rawaru")
-    app.setWindowIcon(QIcon(os.path.join(HERE, "qml", "logo.svg")))
+    app.setWindowIcon(QIcon.fromTheme("system-software-install"))
     backend = Backend(dry_run=dry)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("backend", backend)

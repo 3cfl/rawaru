@@ -171,6 +171,20 @@ class Backend(QObject):
         return self._status
 
     @Property(str, constant=True)
+    def graphics(self):
+        try:
+            from engine import gpus
+            found = gpus()
+        except Exception:
+            found = []
+        names = {"0x8086": "Intel", "0x1002": "AMD"}
+        parts = [names[v] for v in sorted({v for v, _ in found}) if v in names]
+        nv = [d for v, d in found if v == "0x10de"]
+        if nv:
+            parts.append("NVIDIA, proprietary driver" if max(nv) >= 0x1e00 else "NVIDIA, open nouveau driver")
+        return " + ".join(parts) if parts else "Generic, Mesa drivers"
+
+    @Property(str, constant=True)
     def wallpaper(self):
         for p in ("/usr/share/fiordland/wallpaper.png",
                   os.path.join(HERE, "..", "packages", "fiordland-desktop", "files", "wallpaper.png")):

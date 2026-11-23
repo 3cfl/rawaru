@@ -2,26 +2,22 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    readonly property color bg: "#131313"
-    readonly property color surface1: "#1a1a1a"
-    readonly property color surface2: "#1f1f1f"
-    readonly property color surface3: "#262626"
-    readonly property color surface4: "#2e2e2e"
-    readonly property color outline: "#474747"
-    readonly property color outlineVariant: "#2a2a2a"
-    readonly property color text: "#e2e2e2"
-    readonly property color textVariant: "#adadad"
-    readonly property color primary: "#8ec5ff"
-    readonly property color inkPrimary: "#00315a"
-    readonly property color primaryContainer: "#1d3550"
-    readonly property color inkPrimaryContainer: "#c4dfff"
-    readonly property color danger: "#ffb4ab"
-    readonly property color dangerContainer: "#3f1d1b"
-    readonly property color success: "#9cd67c"
+    readonly property color bg: "#101113"
+    readonly property color panel: "#15161a"
+    readonly property color raised: "#1b1d21"
+    readonly property color hover: "#212328"
+    readonly property color line: "#25272c"
+    readonly property color lineStrong: "#383b41"
+    readonly property color text: "#e9eaec"
+    readonly property color muted: "#9b9fa7"
+    readonly property color faint: "#686c74"
+    readonly property color accent: "#8ec5ff"
+    readonly property color accentInk: "#0a1f33"
+    readonly property color accentSoft: Qt.rgba(0.557, 0.773, 1, 0.12)
+    readonly property color danger: "#ff8f85"
     readonly property string font: "Inter"
     readonly property string mono: "JetBrains Mono"
-    readonly property string icons: "Material Symbols Rounded"
-    readonly property int radius: 28
-    readonly property int fast: 180
-    readonly property int medium: 320
+    readonly property int radius: 8
+    readonly property int fast: 140
+    readonly property int medium: 260
 }

@@ -11,8 +11,9 @@ Rectangle {
     property string placeholder: "Search"
     signal picked(string key)
 
-    radius: 24
-    color: Theme.surface2
+    radius: Theme.radius
+    color: Theme.panel
+    border.color: Theme.line
     clip: true
 
     property string query: ""
@@ -30,29 +31,42 @@ Rectangle {
             }
         }
     }
-    onCurrentChanged: if (!search.input.activeFocus) Qt.callLater(reveal)
+    onCurrentChanged: if (!search.activeFocus) Qt.callLater(reveal)
     Component.onCompleted: Qt.callLater(reveal)
 
-    M3Field {
-        id: search
-        x: 12; y: 12
-        width: parent.width - 24
-        label: root.placeholder
-        icon: "search"
-        onEdited: root.query = text
+    Item {
+        id: top
+        width: parent.width
+        height: 44
+        Glyph { id: glass; x: 14; anchors.verticalCenter: parent.verticalCenter; kind: "search"; width: 15; height: 15; stroke: 1.6; color: Theme.faint }
+        TextInput {
+            id: search
+            anchors.left: glass.right
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.text
+            font.family: Theme.font
+            font.pixelSize: 14
+            selectionColor: Theme.accent
+            selectedTextColor: Theme.accentInk
+            clip: true
+            onTextEdited: root.query = text
+            Text { visible: search.text === ""; text: root.placeholder; color: Theme.faint; font: search.font }
+        }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
     }
 
     ListView {
         id: list
-        anchors.top: search.bottom
-        anchors.topMargin: 8
+        anchors.top: top.bottom
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 8
-        x: 8
-        width: parent.width - 16
+        anchors.margins: 4
+        x: 4
+        width: parent.width - 8
         model: root.shown
         clip: true
-        spacing: 2
         boundsBehavior: Flickable.StopAtBounds
         reuseItems: true
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -60,40 +74,29 @@ Rectangle {
             id: row
             required property var modelData
             readonly property bool selected: root.keyOf(modelData) === root.current
-            width: ListView.view.width - 10
-            height: 48
-            radius: 16
-            color: selected ? Theme.primaryContainer : hover.containsMouse ? Theme.surface3 : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.fast } }
+            width: ListView.view.width - 8
+            height: 36
+            radius: 6
+            color: selected ? Theme.accentSoft : hover.containsMouse ? Theme.hover : "transparent"
             Text {
-                x: 16
+                x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 32 - sec.implicitWidth - (check.visible ? 30 : 0)
+                width: parent.width - 30 - sec.implicitWidth
                 elide: Text.ElideRight
                 text: root.primaryOf(row.modelData)
-                color: row.selected ? Theme.inkPrimaryContainer : Theme.text
+                color: row.selected ? Theme.accent : Theme.text
                 font.family: Theme.font
-                font.pixelSize: 15
-                font.weight: row.selected ? Font.DemiBold : Font.Normal
+                font.pixelSize: 14
             }
             Text {
                 id: sec
-                anchors.right: check.visible ? check.left : parent.right
-                anchors.rightMargin: 14
+                anchors.right: parent.right
+                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.secondaryOf(row.modelData)
-                color: row.selected ? Theme.inkPrimaryContainer : Theme.textVariant
+                color: row.selected ? Theme.accent : Theme.faint
                 font.family: Theme.font
-                font.pixelSize: 13
-            }
-            Sym {
-                id: check
-                visible: row.selected
-                text: "check"
-                color: Theme.primary
-                anchors.right: parent.right
-                anchors.rightMargin: 14
-                anchors.verticalCenter: parent.verticalCenter
+                font.pixelSize: 12
             }
             MouseArea {
                 id: hover

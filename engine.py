@@ -32,6 +32,9 @@ SERVICES = [
 SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cache/pacman/pkg"), ("@snapshots", ".snapshots")]
 MOUNT_OPTS = "noatime,compress=zstd:1"
 FIORD_REPO = "[fiordland]\nSigLevel = Optional TrustAll\nServer = https://fiordland.apollo44.lat/repo/$arch\n\n"
+CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
+CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
+KERNEL = {"cachy": True}
 
 DRY = False
 
@@ -137,7 +140,7 @@ def gpu_setup(found):
     nv = [dev for v, dev in found if v == "0x10de"]
     if nv and max(nv) >= 0x1e00:
         g["nvidia"] = True
-        g["pkgs"] += ["nvidia-open", "nvidia-utils", "lib32-nvidia-utils", "nvidia-settings",
+        g["pkgs"] += ["nvidia-open", "linux-cachyos-nvidia-open", "nvidia-utils", "lib32-nvidia-utils", "nvidia-settings",
                       "egl-wayland", "libva-nvidia-driver"]
         g["services"] += ["nvidia-suspend", "nvidia-hibernate", "nvidia-resume"]
         g["modules"] += ["nvidia", "nvidia_modeset", "nvidia_uvm", "nvidia_drm"]
@@ -206,6 +209,9 @@ def pacman_conf():
     base = base.replace("[core]", repo + "[core]", 1)
     base = re.sub(r"(?m)^#?ParallelDownloads.*$", "ParallelDownloads = 10", base)
     base = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", base)
+    base = re.sub(r"(?ms)^\[cachyos\].*?(?=^\[|\Z)", "", base)
+    if KERNEL["cachy"]:
+        base = base.rstrip("\n") + "\n" + CACHY_REPO
     fd, path = tempfile.mkstemp(prefix="rawaru-pacman-", suffix=".conf")
     with os.fdopen(fd, "w") as f:
         f.write(base)
@@ -276,9 +282,13 @@ def configure(cfg, root, uefi):
         pc = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", pc)
         if "[fiordland]" not in pc:
             pc = pc.replace("[core]", FIORD_REPO + "[core]", 1)
-            with open(f"{MNT}/etc/pacman.conf", "w") as f:
-                f.write(pc)
-    log("added [fiordland] repo")
+        if KERNEL["cachy"] and "[cachyos]" not in pc:
+            pc = pc.rstrip("\n") + "\n" + CACHY_REPO
+        with open(f"{MNT}/etc/pacman.conf", "w") as f:
+            f.write(pc)
+    log("added [fiordland] repo" + (" and [cachyos]" if KERNEL["cachy"] else ""))
+    if KERNEL["cachy"]:
+        chroot("pacman-key", "--populate", "cachyos", check=False)
     tz = cfg.get("timezone") or "UTC"
     chroot("ln", "-sf", f"/usr/share/zoneinfo/{tz}", "/etc/localtime")
     chroot("hwclock", "--systohc", check=False)
@@ -342,20 +352,29 @@ def configure(cfg, root, uefi):
                                          capture_output=True, text=True).stdout.strip()
     extra = "".join(f" {p}" for p in GPU["params"])
     opts = f"root=UUID={uuid} rootflags=subvol=@ rw quiet loglevel=3 nowatchdog{extra}"
+    main_k = "linux-cachyos" if KERNEL["cachy"] else "linux"
     if uefi:
         chroot("bootctl", "install", "--variables=yes")
         write("/boot/loader/loader.conf", "default fiordland.conf\ntimeout 2\nconsole-mode max\neditor no\n")
-        write("/boot/loader/entries/fiordland.conf",
-              f"title   Fiordland Linux\nlinux   /vmlinuz-linux\ninitrd  /initramfs-linux.img\noptions {opts}\n")
-        safe = f"root=UUID={uuid} rootflags=subvol=@ rw nomodeset"
-        write("/boot/loader/entries/fiordland-safe.conf",
-              f"title   Fiordland Linux (safe graphics)\nlinux   /vmlinuz-linux\ninitrd  /initramfs-linux.img\noptions {safe}\n")
+
+        def entry(name, title, k, o):
+            write(f"/boot/loader/entries/{name}.conf",
+                  f"title   {title}\nlinux   /vmlinuz-{k}\ninitrd  /initramfs-{k}.img\noptions {o}\n")
+
+        entry("fiordland", "Fiordland Linux", main_k, opts)
+        if KERNEL["cachy"]:
+            entry("fiordland-arch", "Fiordland Linux (Arch kernel)", "linux", opts)
+        entry("fiordland-safe", "Fiordland Linux (safe graphics)", "linux",
+              f"root=UUID={uuid} rootflags=subvol=@ rw nomodeset")
     else:
         chroot("grub-install", "--target=i386-pc", cfg["disk"])
         chroot("sed", "-i", "-e", 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Fiordland"/',
                "-e", 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/',
                "-e", f's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog{extra}"|',
                "/etc/default/grub")
+        if KERNEL["cachy"] and not DRY:
+            with open(f"{MNT}/etc/default/grub", "a") as f:
+                f.write('\nGRUB_TOP_LEVEL="/boot/vmlinuz-linux-cachyos"\n')
         chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 
 
@@ -413,13 +432,23 @@ def main():
             pkgs.append(f"{vendor}-ucode")
         if not is_uefi():
             pkgs.append("grub")
+        KERNEL["cachy"] = cfg.get("kernel", "cachyos") == "cachyos"
         GPU.update(gpu_setup(gpus()))
         pkgs += GPU["pkgs"]
         SERVICES.extend(GPU["services"])
         gpkgs, gsvcs = guest_tools()
         pkgs += gpkgs
         SERVICES.extend(gsvcs)
-        pacstrap(pkgs)
+        if KERNEL["cachy"]:
+            pkgs += CACHY_PKGS
+        try:
+            pacstrap(pkgs)
+        except RuntimeError:
+            if not KERNEL["cachy"]:
+                raise
+            log("CachyOS packages unavailable, falling back to the Arch kernel")
+            KERNEL["cachy"] = False
+            pacstrap([p for p in pkgs if p not in CACHY_PKGS and not p.startswith("linux-cachyos")])
         configure(cfg, root, uefi)
         finish()
         emit(progress=1.0, status="Fiordland is installed", done=True)
