@@ -20,12 +20,15 @@ PACKAGES = [
     "bluez", "bluez-utils", "flatpak", "tawaki", "fiordland-desktop", "fiordland-keyring", "fastfetch", "git",
     "base-devel", "zram-generator", "man-db", "xdg-user-dirs", "xdg-utils", "papirus-icon-theme",
     "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon", "sof-firmware", "alsa-firmware", "reflector",
+    "cups", "cups-filters", "cups-pk-helper", "ghostscript", "avahi", "nss-mdns", "ufw", "fwupd",
+    "ntfs-3g", "exfatprogs", "udisks2", "pkgfile", "unzip", "zip", "7zip",
 ]
 
 SERVICES = [
     "NetworkManager", "bluetooth", "systemd-timesyncd", "fstrim.timer",
     "power-profiles-daemon", "snapper-timeline.timer", "snapper-cleanup.timer", "reflector.timer",
-    "tawaki-catalogue.timer",
+    "tawaki-catalogue.timer", "cups.socket", "avahi-daemon", "ufw", "systemd-oomd",
+    "fwupd-refresh.timer", "paccache.timer", "pkgfile-update.timer",
 ]
 
 SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cache/pacman/pkg"), ("@snapshots", ".snapshots")]
@@ -323,6 +326,7 @@ def configure(cfg, root, uefi):
     write("/etc/sysctl.d/99-fiordland.conf",
           "vm.swappiness = 180\nvm.watermark_boost_factor = 0\nvm.watermark_scale_factor = 125\nvm.page-cluster = 0\n")
     snapper(user, root)
+    services_config()
     for s in SERVICES:
         chroot("systemctl", "enable", s, check=False)
     chroot("flatpak", "remote-add", "--if-not-exists", "flathub",
@@ -490,6 +494,24 @@ def desktop(cfg, user, keymap):
         if "TERMINAL=" not in env:
             write("/etc/environment", env + "TERMINAL=kitty\n")
     chroot("chown", "-R", f"{user}:{user}", f"/home/{user}")
+
+
+def services_config():
+    if DRY:
+        log("configure firewall, mdns")
+        return
+    conf = MNT + "/etc/ufw/ufw.conf"
+    if os.path.exists(conf):
+        with open(conf) as f:
+            text = f.read()
+        write("/etc/ufw/ufw.conf", re.sub(r"(?m)^ENABLED=.*", "ENABLED=yes", text))
+    ns = MNT + "/etc/nsswitch.conf"
+    if os.path.exists(ns):
+        with open(ns) as f:
+            text = f.read()
+        if "mdns_minimal" not in text:
+            text = re.sub(r"(?m)^(hosts:.*?)\bresolve\b", r"\1mdns_minimal [NOTFOUND=return] resolve", text, count=1)
+            write("/etc/nsswitch.conf", text)
 
 
 def snapper(user, root):

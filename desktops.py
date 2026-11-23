@@ -166,6 +166,10 @@ def packages(did, sid):
             pkgs += PLAIN.get(d["id"], [])
         elif "script" in s or sid != "crest":
             pkgs += SHELLED.get(d["id"], [])
+    if d["id"] in ("plasma", "lxqt"):
+        pkgs.append("print-manager")
+    elif d["id"] != "gnome":
+        pkgs.append("system-config-printer")
     seen = set()
     return [p for p in pkgs if not (p in seen or seen.add(p))]
 
