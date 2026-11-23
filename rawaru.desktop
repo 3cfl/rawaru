@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Fiordland
+Comment=Install Fiordland Linux on this computer
+Exec=rawaru
+Icon=fiordland
+Terminal=false
+Categories=System;
