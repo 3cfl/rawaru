@@ -660,13 +660,13 @@ ApplicationWindow {
                         boundsBehavior: Flickable.StopAtBounds
                         model: backend.desktops.filter(d => (d.kind === "wm") === win.wmTab)
                         delegate: Item {
-                            id: drow
+                            id: deskrow
                             required property var modelData
                             required property int index
                             width: dview.width
                             height: 60
-                            Rectangle { anchors.fill: parent; radius: Theme.radius - 1; color: dmouse.containsMouse ? Theme.hover : "transparent" }
-                            Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: win.desktop === drow.modelData.id }
+                            Rectangle { anchors.fill: parent; radius: Theme.radius - 1; color: deskmouse.containsMouse ? Theme.hover : "transparent" }
+                            Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: win.desktop === deskrow.modelData.id }
                             Column {
                                 x: 50
                                 width: parent.width - 70
@@ -674,13 +674,13 @@ ApplicationWindow {
                                 spacing: 3
                                 Row {
                                     spacing: 8
-                                    Text { text: drow.modelData.name; color: Theme.text; font.pixelSize: 14 }
-                                    Text { visible: drow.modelData.recommended; text: "Recommended"; color: Theme.accent; font.pixelSize: 12; anchors.baseline: parent.children[0].baseline }
+                                    Text { text: deskrow.modelData.name; color: Theme.text; font.pixelSize: 14 }
+                                    Text { visible: deskrow.modelData.recommended; text: "Recommended"; color: Theme.accent; font.pixelSize: 12; anchors.baseline: parent.children[0].baseline }
                                 }
-                                Text { text: drow.modelData.desc; color: Theme.faint; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight }
+                                Text { text: deskrow.modelData.desc; color: Theme.faint; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight }
                             }
-                            Rectangle { visible: drow.index < dview.count - 1; anchors.bottom: parent.bottom; x: 18; width: parent.width - 36; height: 1; color: Theme.line }
-                            MouseArea { id: dmouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.pickDesktop(drow.modelData) }
+                            Rectangle { visible: deskrow.index < dview.count - 1; anchors.bottom: parent.bottom; x: 18; width: parent.width - 36; height: 1; color: Theme.line }
+                            MouseArea { id: deskmouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.pickDesktop(deskrow.modelData) }
                         }
                     }
                 }
