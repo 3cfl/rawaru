@@ -120,7 +120,7 @@ class Backend(QObject):
     progressChanged = Signal()
     statusChanged = Signal()
     logAdded = Signal(str)
-    installFinished = Signal(bool, str)
+    installFinished = Signal(bool, str, str)
     timezoneGuessed = Signal(str)
     disksChanged = Signal()
     probed = Signal(str, "QVariantMap")
@@ -141,6 +141,7 @@ class Backend(QObject):
                             "sizeText": "32 GB", "kind": "disk", "big": True, "parts": 0}]
         self._proc = None
         self._error = ""
+        self._detail = ""
         self._done = False
         self._log = []
 
@@ -285,6 +286,11 @@ class Backend(QObject):
     def install(self, cfg):
         if self._proc:
             return
+        self._error = ""
+        self._detail = ""
+        self._done = False
+        self._log = []
+        self._buf = b""
         fd, path = tempfile.mkstemp(prefix="rawaru-", suffix=".json")
         with os.fdopen(fd, "w") as f:
             json.dump(dict(cfg), f)
@@ -325,13 +331,20 @@ class Backend(QObject):
                 self._done = True
             if "error" in msg:
                 self._error = msg["error"]
+                self._detail = msg.get("detail", "")
 
     def _exited(self, code, _status):
         self._read()
         ok = self._done and code == 0
         err = "" if ok else (self._error or f"The installer stopped unexpectedly (code {code}).")
+        detail = "" if ok else (self._detail or "\n".join(self._log[-20:]))
         self._proc = None
-        QTimer.singleShot(400, lambda: self.installFinished.emit(ok, err))
+        if not ok:
+            try:
+                self.saveLog()
+            except OSError:
+                pass
+        QTimer.singleShot(400, lambda: self.installFinished.emit(ok, err, detail))
 
     @Slot()
     def saveLog(self):

@@ -23,7 +23,7 @@ PACKAGES = [
     "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon", "sof-firmware", "alsa-firmware", "reflector",
     "cups", "cups-filters", "cups-pk-helper", "ghostscript", "avahi", "nss-mdns", "ufw", "fwupd",
     "ntfs-3g", "exfatprogs", "udisks2", "pkgfile", "unzip", "zip", "7zip",
-    "grub", "grub-btrfs", "inotify-tools", "os-prober",
+    "grub", "grub-btrfs", "inotify-tools", "os-prober", "openssh",
 ]
 
 SERVICES = [
@@ -43,6 +43,13 @@ ESP_MNT = "/efi"
 MODE = {"alongside": False}
 
 DRY = False
+TAIL = 20
+
+
+class CommandFailed(RuntimeError):
+    def __init__(self, msg, tail):
+        super().__init__(msg)
+        self.tail = tail
 
 
 def emit(**kw):
@@ -71,7 +78,8 @@ def run(cmd, inp=None, check=True):
         if line.strip():
             log(line)
     if check and p.returncode != 0:
-        raise RuntimeError(f"{cmd[0]} failed ({p.returncode})")
+        out = [l for l in (p.stderr or p.stdout).splitlines() if l.strip()]
+        raise CommandFailed(f"{cmd[0]} failed ({p.returncode})", out[-TAIL:])
     return p.stdout
 
 
@@ -170,11 +178,52 @@ def guest_tools():
     return [], []
 
 
-def release_disk(disk):
-    run(["swapoff", "-a"], check=False)
+def mounted(path):
+    return not DRY and os.path.ismount(path)
+
+
+def disk_nodes(disk):
+    return (run(["lsblk", "-lnpo", "NAME", disk], check=False) or "").split()
+
+
+def stop_agents():
+    run(["gpgconf", "--homedir", f"{MNT}/etc/pacman.d/gnupg", "--kill", "all"], check=False)
+    for name in ("gpg-agent", "dirmngr", "keyboxd"):
+        run(["pkill", "-x", name], check=False)
+
+
+def release_mnt():
+    stop_agents()
+    if not mounted(MNT):
+        return
+    run(["sync"], check=False)
+    run(["fuser", "-km", MNT], check=False)
     run(["umount", "-R", MNT], check=False)
-    for line in (run(["lsblk", "-lnpo", "NAME", disk], check=False) or "").split()[1:]:
-        run(["umount", line], check=False)
+    if mounted(MNT):
+        time.sleep(1)
+        run(["umount", "-R", MNT], check=False)
+    if mounted(MNT):
+        run(["umount", "-lR", MNT], check=False)
+
+
+def release_disk(disk):
+    release_mnt()
+    nodes = disk_nodes(disk)
+    if not DRY:
+        with open("/proc/swaps") as f:
+            swaps = [l.split()[0] for l in f.read().splitlines()[1:] if l.strip()]
+        for dev in swaps:
+            if os.path.realpath(dev) in nodes:
+                run(["swapoff", dev], check=False)
+    for node in nodes[1:]:
+        run(["umount", node], check=False)
+    settle(disk)
+    if DRY:
+        return
+    busy = (run(["lsblk", "-lnpo", "NAME,MOUNTPOINTS", disk], check=False) or "").splitlines()
+    busy = [l.split(None, 1) for l in busy if len(l.split(None, 1)) == 2]
+    if busy:
+        raise CommandFailed("The target disk is still in use", [f"{n} mounted at {m}" for n, m in busy])
 
 
 def settle(disk):
@@ -318,6 +367,8 @@ def pacman_conf():
 
 def pacstrap(pkgs):
     status("Downloading packages", 0.05)
+    if not DRY and not os.path.ismount(MNT):
+        raise RuntimeError(f"{MNT} is not mounted, refusing to install into the live system")
     if DRY:
         total = len(pkgs)
         for i, p in enumerate(pkgs):
@@ -337,6 +388,7 @@ def pacstrap(pkgs):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
     total = None
     dl = inst = 0
+    tail = []
     re_total = re.compile(r"^Packages \((\d+)\)")
     re_inst = re.compile(r"^\(\s*(\d+)/(\d+)\) installing (\S+)")
     for raw in p.stdout:
@@ -344,6 +396,7 @@ def pacstrap(pkgs):
         if not line:
             continue
         log(line)
+        tail = (tail + [line])[-TAIL:]
         m = re_total.match(line)
         if m:
             total = int(m.group(1))
@@ -361,7 +414,7 @@ def pacstrap(pkgs):
     p.wait()
     os.unlink(conf)
     if p.returncode != 0:
-        raise RuntimeError("pacstrap failed")
+        raise CommandFailed(f"pacstrap failed ({p.returncode})", tail)
 
 
 def configure(cfg, root, uefi):
@@ -648,10 +701,7 @@ def console_keymap(xkb):
 
 def finish():
     status("Finishing up", 0.99)
-    run(["sync"], check=False)
-    run(["gpgconf", "--homedir", f"{MNT}/etc/pacman.d/gnupg", "--kill", "gpg-agent"], check=False)
-    run(["fuser", "-km", MNT], check=False)
-    run(["umount", "-R", MNT], check=False)
+    release_mnt()
 
 
 def main():
@@ -702,8 +752,12 @@ def main():
         emit(progress=1.0, status="Fiordland is installed", done=True)
     except Exception as e:
         log(f"error: {e}")
-        run(["umount", "-R", MNT], check=False)
-        emit(error=str(e))
+        tail = getattr(e, "tail", [])
+        try:
+            release_mnt()
+        except Exception as ce:
+            log(f"cleanup: {ce}")
+        emit(error=str(e), detail="\n".join(tail))
         sys.exit(1)
 
 

@@ -50,6 +50,7 @@ ApplicationWindow {
     property bool wmTab: false
     property bool failed: false
     property string errorText: ""
+    property string errorDetail: ""
 
     readonly property var steps: [
         { label: "Region", title: "Where are you?", sub: "Time zone and keyboard layout." },
@@ -149,6 +150,7 @@ ApplicationWindow {
     function startInstall() {
         failed = false
         errorText = ""
+        errorDetail = ""
         logModel.clear()
         step = 6
         backend.install({
@@ -182,9 +184,10 @@ ApplicationWindow {
             logModel.append({ line: line })
             if (logModel.count > 1500) logModel.remove(0, 300)
         }
-        function onInstallFinished(ok, err) {
+        function onInstallFinished(ok, err, detail) {
             win.failed = !ok
             win.errorText = err
+            win.errorDetail = detail
             win.step = 7
         }
     }
@@ -1248,11 +1251,40 @@ ApplicationWindow {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: win.failed
-                            ? win.errorText + "\n\nThe disk may be partly set up. Try again, or save the log and ask for help."
+                            ? win.errorText + "\n\nThe disk may be partly set up. Try again, or save the log and ask for help. The log lives in this live session, so copy it somewhere before restarting."
                             : "Fiordland is installed. Restart and remove the install media, then log in as " + win.username + "."
                         color: Theme.muted
                         font.pixelSize: 15
                         lineHeight: 1.3
+                    }
+                    Item { width: 1; height: win.failed && win.errorDetail !== "" ? 18 : 0 }
+                    Rectangle {
+                        visible: win.failed && win.errorDetail !== ""
+                        width: parent.width
+                        height: Math.min(detailText.implicitHeight + 24, 300)
+                        radius: Theme.radius
+                        color: "#0b0c0e"
+                        border.color: Theme.line
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            clip: true
+                            contentWidth: width
+                            contentHeight: detailText.implicitHeight
+                            onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
+                            TextEdit {
+                                id: detailText
+                                width: parent.width
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.WrapAnywhere
+                                text: win.errorDetail
+                                color: Theme.faint
+                                selectionColor: Theme.accent
+                                font.family: Theme.mono
+                                font.pixelSize: 11
+                            }
+                        }
                     }
                     Item { width: 1; height: 28 }
                     Row {
