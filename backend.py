@@ -8,6 +8,8 @@ import urllib.request
 
 from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
 
+import desktops
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 BOOTMNT = "/run/archiso/bootmnt"
 MIN_SIZE = 20 * 1000**3
@@ -184,6 +186,10 @@ class Backend(QObject):
             parts.append("NVIDIA, proprietary driver" if max(nv) >= 0x1e00 else "NVIDIA, open nouveau driver")
         return " + ".join(parts) if parts else "Generic, Mesa drivers"
 
+    @Property("QVariantList", constant=True)
+    def desktops(self):
+        return desktops.catalogue()
+
     @Property(str, constant=True)
     def wallpaper(self):
         for p in ("/usr/share/fiordland/wallpaper.png",
@@ -219,8 +225,16 @@ class Backend(QObject):
     def setKeymap(self, code):
         if self._dry:
             return
-        subprocess.Popen(["hyprctl", "keyword", "input:kb_layout", code],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+        try:
+            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                subprocess.Popen(["hyprctl", "keyword", "input:kb_layout", code], **quiet)
+            elif "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", ""):
+                subprocess.run(["kwriteconfig6", "--file", "kxkbrc", "--group", "Layout", "--key", "LayoutList", code], **quiet)
+                subprocess.run(["kwriteconfig6", "--file", "kxkbrc", "--group", "Layout", "--key", "Use", "--type", "bool", "true"], **quiet)
+                subprocess.Popen(["dbus-send", "--session", "--type=signal", "/Layouts", "org.kde.keyboard.reloadConfig"], **quiet)
+        except OSError:
+            pass
 
     @Slot("QVariantMap")
     def install(self, cfg):

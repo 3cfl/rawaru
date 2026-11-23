@@ -8,30 +8,29 @@ import sys
 import tempfile
 import time
 
+import desktops
+
 MNT = "/mnt"
 LOCAL_REPO = "/opt/fiordland/repo"
 
 PACKAGES = [
     "base", "linux", "linux-firmware", "btrfs-progs", "dosfstools", "networkmanager", "sudo", "nano",
-    "hyprland", "xdg-desktop-portal-hyprland", "xdg-desktop-portal-gtk", "kitty", "crest", "quickshell",
     "upower", "libnotify", "pipewire", "pipewire-pulse", "pipewire-alsa", "wireplumber",
-    "greetd", "greetd-tuigreet", "noto-fonts", "noto-fonts-emoji", "inter-font", "ttf-jetbrains-mono",
-    "ttf-material-symbols-variable", "firefox", "thunar", "gvfs", "pavucontrol",
-    "bluez", "bluez-utils", "brightnessctl", "flatpak", "tawaki", "fiordland-desktop", "fastfetch", "git",
-    "base-devel", "zram-generator", "man-db", "qt6-wayland", "xdg-user-dirs", "wl-clipboard", "grim",
-    "slurp", "playerctl", "papirus-icon-theme", "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon",
-    "sof-firmware", "alsa-firmware", "reflector",
+    "noto-fonts", "noto-fonts-emoji", "inter-font", "ttf-jetbrains-mono", "firefox",
+    "bluez", "bluez-utils", "flatpak", "tawaki", "fiordland-desktop", "fiordland-keyring", "fastfetch", "git",
+    "base-devel", "zram-generator", "man-db", "xdg-user-dirs", "xdg-utils", "papirus-icon-theme",
+    "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon", "sof-firmware", "alsa-firmware", "reflector",
 ]
 
 SERVICES = [
-    "NetworkManager", "bluetooth", "greetd", "systemd-timesyncd", "fstrim.timer",
+    "NetworkManager", "bluetooth", "systemd-timesyncd", "fstrim.timer",
     "power-profiles-daemon", "snapper-timeline.timer", "snapper-cleanup.timer", "reflector.timer",
     "tawaki-catalogue.timer",
 ]
 
 SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cache/pacman/pkg"), ("@snapshots", ".snapshots")]
 MOUNT_OPTS = "noatime,compress=zstd:1"
-FIORD_REPO = "[fiordland]\nSigLevel = Optional TrustAll\nServer = https://fiordland.apollo44.lat/repo/$arch\n\n"
+FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordland.apollo44.lat/repo/$arch\n\n"
 CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
 CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
 KERNEL = {"cachy": True}
@@ -205,7 +204,7 @@ def pacman_conf():
     with open("/etc/pacman.conf") as f:
         base = f.read()
     base = re.sub(r"(?ms)^\[fiordland\].*?(?=^\[|\Z)", "", base)
-    repo = f"[fiordland]\nSigLevel = Optional TrustAll\nServer = file://{LOCAL_REPO}\n\n"
+    repo = f"[fiordland]\nSigLevel = Required\nServer = file://{LOCAL_REPO}\n\n"
     base = base.replace("[core]", repo + "[core]", 1)
     base = re.sub(r"(?m)^#?ParallelDownloads.*$", "ParallelDownloads = 10", base)
     base = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", base)
@@ -317,18 +316,9 @@ def configure(cfg, root, uefi):
     log(f"set password for {user}")
     chroot("passwd", "-l", "root")
     write("/etc/sudoers.d/10-wheel", "%wheel ALL=(ALL:ALL) ALL\n", 0o440)
-    chroot("sed", "-i", f's/kb_layout = "[^"]*"/kb_layout = "{keymap}"/',
-           f"/home/{user}/.config/hypr/hyprland.lua", check=False)
 
-    status("Setting up services", 0.89)
-    greet = (
-        "[terminal]\nvt = 1\n\n[default_session]\n"
-        'command = "tuigreet --time --remember --asterisks --greeting \'Welcome to Fiordland\' --cmd start-hyprland"\n'
-        'user = "greeter"\n'
-    )
-    if cfg.get("autologin"):
-        greet += f'\n[initial_session]\ncommand = "start-hyprland"\nuser = "{user}"\n'
-    write("/etc/greetd/config.toml", greet)
+    status("Setting up your desktop", 0.88)
+    desktop(cfg, user, keymap)
     write("/etc/systemd/zram-generator.conf", "[zram0]\nzram-size = min(ram / 2, 8192)\ncompression-algorithm = zstd\n")
     write("/etc/sysctl.d/99-fiordland.conf",
           "vm.swappiness = 180\nvm.watermark_boost_factor = 0\nvm.watermark_scale_factor = 125\nvm.page-cluster = 0\n")
@@ -376,6 +366,130 @@ def configure(cfg, root, uefi):
             with open(f"{MNT}/etc/default/grub", "a") as f:
                 f.write('\nGRUB_TOP_LEVEL="/boot/vmlinuz-linux-cachyos"\n')
         chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
+
+
+def home(user, path, text, mode=0o644):
+    write(f"/home/{user}/{path}", text, mode)
+
+
+def from_system(path):
+    try:
+        with open(MNT + path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def login_manager(d, user, autologin):
+    dm = d["dm"]
+    session = d["session"]
+    if dm == "sddm":
+        conf = "[Theme]\nCurrent=breeze\n" if d["id"] == "plasma" else ""
+        if autologin:
+            conf += f"\n[Autologin]\nUser={user}\nSession={session}.desktop\n"
+        write("/etc/sddm.conf.d/10-fiordland.conf", conf or "[General]\n")
+        return "sddm"
+    if dm == "gdm":
+        if autologin:
+            write("/etc/gdm/custom.conf", f"[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin={user}\n")
+        return "gdm"
+    if dm == "cosmic":
+        if autologin and not DRY:
+            conf = from_system("/etc/greetd/cosmic-greeter.toml")
+            if "[initial_session]" not in conf:
+                conf = conf.rstrip("\n") + f'\n\n[initial_session]\ncommand = "start-cosmic"\nuser = "{user}"\n'
+                write("/etc/greetd/cosmic-greeter.toml", conf)
+        return "cosmic-greeter"
+    if dm == "lightdm":
+        greeter = d.get("greeter", "lightdm-gtk-greeter")
+        conf = f"[Seat:*]\ngreeter-session={greeter}\nuser-session={session}\n"
+        if autologin:
+            conf += f"autologin-user={user}\nautologin-session={session}\n"
+            chroot("groupadd", "-rf", "autologin", check=False)
+            chroot("gpasswd", "-a", user, "autologin", check=False)
+        write("/etc/lightdm/lightdm.conf.d/50-fiordland.conf", conf)
+        if greeter == "lightdm-gtk-greeter":
+            write("/etc/lightdm/lightdm-gtk-greeter.conf",
+                  "[greeter]\nbackground=/usr/share/fiordland/wallpaper.png\ntheme-name=Adwaita-dark\n"
+                  "icon-theme-name=Fiordland\nfont-name=Inter 11\n")
+        return "lightdm"
+    cmd = d["cmd"]
+    greet = (
+        "[terminal]\nvt = 1\n\n[default_session]\n"
+        f'command = "tuigreet --time --remember --remember-session --asterisks --greeting \'Welcome to Fiordland\' --cmd {cmd}"\n'
+        'user = "greeter"\n'
+    )
+    if autologin:
+        greet += f'\n[initial_session]\ncommand = "{cmd}"\nuser = "{user}"\n'
+    write("/etc/greetd/config.toml", greet)
+    return "greetd"
+
+
+def desktop(cfg, user, keymap):
+    d, shell = desktops.resolve(cfg.get("desktop", "plasma"), cfg.get("shell"))
+    did = d["id"]
+    log(f"desktop {did}" + (f" with {shell}" if shell else ""))
+    SERVICES.append(login_manager(d, user, cfg.get("autologin")))
+    script = shell and "script" in desktops.SHELLS[shell]
+    if script:
+        home(user, ".config/fiordland/dots", desktops.SHELLS[shell]["script"] + "\n")
+    wall = "/usr/share/fiordland/wallpaper.png"
+    run_cmd = desktops.SHELLS[shell].get("run") if shell and not script else None
+
+    if did == "plasma":
+        home(user, ".config/autostart/fiordland-wallpaper.desktop",
+             "[Desktop Entry]\nType=Application\nName=Fiordland wallpaper\nNoDisplay=true\n"
+             f"Exec=sh -c 'plasma-apply-wallpaperimage {wall} && rm -f ~/.config/autostart/fiordland-wallpaper.desktop'\n")
+        if keymap != "us":
+            home(user, ".config/kxkbrc", f"[Layout]\nLayoutList={keymap}\nUse=true\n")
+    elif did == "hyprland":
+        conf = from_system("/usr/share/fiordland/hyprland.lua")
+        conf = re.sub(r'(?m)^local shell = "[^"]*"', f'local shell = "{"dots" if script else shell}"', conf)
+        conf = re.sub(r'kb_layout = "[^"]*"', f'kb_layout = "{keymap}"', conf)
+        home(user, ".config/hypr/hyprland.lua", conf)
+    elif did == "niri":
+        conf = from_system("/usr/share/doc/niri/default-config.kdl")
+        extra = ['spawn-at-startup "fiordland-dots"']
+        if shell == "none":
+            extra += ['spawn-at-startup "mako"', f'spawn-at-startup "swaybg" "-m" "fill" "-i" "{wall}"']
+        elif run_cmd:
+            conf = re.sub(r'(?m)^spawn-at-startup "waybar"\n', "", conf)
+            extra.append("spawn-at-startup " + " ".join(f'"{w}"' for w in run_cmd.split()))
+        home(user, ".config/niri/config.kdl", conf.rstrip("\n") + "\n\n" + "\n".join(extra) + "\n")
+    elif did == "sway":
+        conf = from_system("/etc/sway/config")
+        conf = re.sub(r"(?m)^output \* bg .*$", f"output * bg {wall} fill", conf)
+        if run_cmd:
+            conf = re.sub(r"(?ms)^bar \{.*?^\}\n", "", conf)
+            conf = conf.replace("\ninclude ", f"\nexec {run_cmd}\n\ninclude ", 1)
+        conf += f"\ninput type:keyboard xkb_layout {keymap}\n"
+        home(user, ".config/sway/config", conf)
+    elif did == "labwc":
+        auto = [f"swaybg -m fill -i {wall} &", "nm-applet --indicator &"]
+        auto += [f"{run_cmd} &"] if run_cmd else ["waybar &", "mako &"]
+        home(user, ".config/labwc/autostart", "\n".join(auto) + "\n")
+        home(user, ".config/labwc/environment", f"XKB_DEFAULT_LAYOUT={keymap}\n")
+    elif did == "i3":
+        conf = from_system("/etc/i3/config")
+        conf += f"\nexec --no-startup-id feh --no-fehbg --bg-fill {wall}\n"
+        home(user, ".config/i3/config", conf)
+    elif did == "bspwm":
+        rc = from_system("/usr/share/doc/bspwm/examples/bspwmrc")
+        rc += f"\nfeh --no-fehbg --bg-fill {wall} &\nnm-applet &\n"
+        home(user, ".config/bspwm/bspwmrc", rc, 0o755)
+        keys = from_system("/usr/share/doc/bspwm/examples/sxhkdrc").replace("urxvt", "kitty")
+        home(user, ".config/sxhkd/sxhkdrc", keys)
+    elif did == "awesome":
+        rc = from_system("/etc/xdg/awesome/rc.lua").replace('terminal = "xterm"', 'terminal = "kitty"')
+        home(user, ".config/awesome/rc.lua", rc)
+    elif did == "openbox":
+        home(user, ".config/openbox/autostart", f"feh --no-fehbg --bg-fill {wall} &\ntint2 &\nnm-applet &\n")
+
+    if d["kind"] == "wm":
+        env = from_system("/etc/environment")
+        if "TERMINAL=" not in env:
+            write("/etc/environment", env + "TERMINAL=kitty\n")
+    chroot("chown", "-R", f"{user}:{user}", f"/home/{user}")
 
 
 def snapper(user, root):
@@ -427,6 +541,7 @@ def main():
     try:
         root, uefi = partition(cfg)
         pkgs = list(PACKAGES)
+        pkgs += [p for p in desktops.packages(cfg.get("desktop", "plasma"), cfg.get("shell")) if p not in pkgs]
         vendor = cpu_vendor()
         if vendor:
             pkgs.append(f"{vendor}-ucode")

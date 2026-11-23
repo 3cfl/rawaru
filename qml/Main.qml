@@ -33,6 +33,9 @@ ApplicationWindow {
     property string password2: ""
     property bool autologin: false
     property string kernel: "cachyos"
+    property string desktop: "plasma"
+    property string dots: ""
+    property bool wmTab: false
     property bool failed: false
     property string errorText: ""
 
@@ -40,6 +43,7 @@ ApplicationWindow {
         { label: "Region", title: "Where are you?", sub: "Time zone and keyboard layout." },
         { label: "Disk", title: "Choose a disk", sub: "Fiordland takes the whole disk." },
         { label: "Account", title: "Your account", sub: "The user you'll log in as every day." },
+        { label: "Desktop", title: "Pick a desktop", sub: "You can install others later with tawaki." },
         { label: "Review", title: "Review", sub: "Nothing has been changed yet." },
         { label: "Install", title: "", sub: "" }
     ]
@@ -60,7 +64,24 @@ ApplicationWindow {
     readonly property bool canNext: step === 1 ? timezone !== "" && keymap !== ""
         : step === 2 ? disk !== "" && understood
         : step === 3 ? youValid
+        : step === 4 ? desktopSel !== null
         : true
+
+    function desktopInfo(id) {
+        for (const d of backend.desktops) if (d.id === id) return d
+        return null
+    }
+    function shellInfo(d, id) {
+        if (!d) return null
+        for (let i = 0; i < d.shells.length; i++) if (d.shells[i].id === id) return d.shells[i]
+        return null
+    }
+    function pickDesktop(d) {
+        desktop = d.id
+        dots = d.shells.length ? d.shells[0].id : ""
+    }
+    readonly property var desktopSel: desktopInfo(desktop)
+    readonly property var shellSel: shellInfo(desktopSel, dots)
 
     function localeName(code) {
         const l = Qt.locale(code.replace(".UTF-8", ""))
@@ -76,18 +97,19 @@ ApplicationWindow {
     function zoneRegion(z) { return z.indexOf("/") < 0 ? "" : z.split("/").slice(0, -1).join(" / ").replace(/_/g, " ") }
 
     function next() {
-        if (step < 1 || step > 4 || !canNext) return
-        if (step === 4) { startInstall(); return }
+        if (step < 1 || step > 5 || !canNext) return
+        if (step === 5) { startInstall(); return }
         step++
     }
     function startInstall() {
         failed = false
         errorText = ""
         logModel.clear()
-        step = 5
+        step = 6
         backend.install({
             disk: disk, locale: sysLocale, timezone: timezone, keymap: keymap, fullname: fullname,
-            username: username, hostname: hostname, password: password, autologin: autologin, kernel: kernel
+            username: username, hostname: hostname, password: password, autologin: autologin, kernel: kernel,
+            desktop: desktop, shell: dots
         })
     }
 
@@ -105,7 +127,7 @@ ApplicationWindow {
         function onInstallFinished(ok, err) {
             win.failed = !ok
             win.errorText = err
-            win.step = 6
+            win.step = 7
         }
     }
     ListModel { id: logModel }
@@ -130,7 +152,7 @@ ApplicationWindow {
     component Header: Column {
         property int index
         spacing: 6
-        Text { text: "Step " + parent.index + " of 4"; color: Theme.faint; font.pixelSize: 12; font.weight: Font.Medium }
+        Text { text: "Step " + parent.index + " of 5"; color: Theme.faint; font.pixelSize: 12; font.weight: Font.Medium }
         Text { text: win.steps[parent.index - 1].title; color: Theme.text; font.pixelSize: 26; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
         Text { text: win.steps[parent.index - 1].sub; color: Theme.muted; font.pixelSize: 14 }
     }
@@ -160,7 +182,7 @@ ApplicationWindow {
         property int target: -1
         property bool last: false
         width: parent.width
-        height: 46
+        height: 40
         Text { x: 18; width: 150; anchors.verticalCenter: parent.verticalCenter; text: parent.label; color: Theme.muted; font.pixelSize: 13 }
         Text {
             x: 170
@@ -300,8 +322,8 @@ ApplicationWindow {
                         required property var modelData
                         required property int index
                         readonly property int num: index + 1
-                        readonly property bool current: win.step === num || (win.step === 6 && num === 5)
-                        readonly property bool done: win.step > num && !(win.step === 6 && num === 5)
+                        readonly property bool current: win.step === num || (win.step === 7 && num === 6)
+                        readonly property bool done: win.step > num && !(win.step === 7 && num === 6)
                         width: parent.width
                         height: 38
                         Rectangle {
@@ -600,8 +622,130 @@ ApplicationWindow {
             Page {
                 index: 4
                 Header { id: h4; index: 4 }
-                Column {
+                Row {
+                    id: dtabs
                     anchors.top: h4.bottom
+                    anchors.topMargin: 24
+                    spacing: 8
+                    Repeater {
+                        model: [[false, "Desktops"], [true, "Window managers"]]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool on: win.wmTab === modelData[0]
+                            width: tabText.implicitWidth + 32
+                            height: 34
+                            radius: 17
+                            color: on ? Theme.accent : tabMouse.containsMouse ? Theme.hover : Theme.panel
+                            border.color: on ? Theme.accent : Theme.line
+                            Text { id: tabText; anchors.centerIn: parent; text: parent.modelData[1]; color: parent.on ? Theme.accentInk : Theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                            MouseArea { id: tabMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.wmTab = parent.modelData[0] }
+                        }
+                    }
+                }
+                Rectangle {
+                    id: dlist
+                    anchors.top: dtabs.bottom
+                    anchors.topMargin: 16
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 20
+                    width: win.wmTab && win.desktopSel && win.desktopSel.kind === "wm" && win.desktopSel.shells.length ? (parent.width - 16) * 0.42 : parent.width
+                    radius: Theme.radius
+                    color: Theme.panel
+                    border.color: Theme.line
+                    clip: true
+                    ListView {
+                        id: dview
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: backend.desktops.filter(d => (d.kind === "wm") === win.wmTab)
+                        delegate: Item {
+                            id: drow
+                            required property var modelData
+                            required property int index
+                            width: dview.width
+                            height: 60
+                            Rectangle { anchors.fill: parent; radius: Theme.radius - 1; color: dmouse.containsMouse ? Theme.hover : "transparent" }
+                            Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: win.desktop === drow.modelData.id }
+                            Column {
+                                x: 50
+                                width: parent.width - 70
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 3
+                                Row {
+                                    spacing: 8
+                                    Text { text: drow.modelData.name; color: Theme.text; font.pixelSize: 14 }
+                                    Text { visible: drow.modelData.recommended; text: "Recommended"; color: Theme.accent; font.pixelSize: 12; anchors.baseline: parent.children[0].baseline }
+                                }
+                                Text { text: drow.modelData.desc; color: Theme.faint; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight }
+                            }
+                            Rectangle { visible: drow.index < dview.count - 1; anchors.bottom: parent.bottom; x: 18; width: parent.width - 36; height: 1; color: Theme.line }
+                            MouseArea { id: dmouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.pickDesktop(drow.modelData) }
+                        }
+                    }
+                }
+                Column {
+                    anchors.top: dlist.top
+                    anchors.left: dlist.right
+                    anchors.leftMargin: 16
+                    anchors.right: parent.right
+                    spacing: 8
+                    visible: dlist.width < content.width - 1
+                    Label { text: "Shell for " + (win.desktopSel ? win.desktopSel.name : "") }
+                    Rectangle {
+                        width: parent.width
+                        height: Math.min(scol.implicitHeight + 2, dlist.height - 26)
+                        radius: Theme.radius
+                        color: Theme.panel
+                        border.color: Theme.line
+                        clip: true
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            contentHeight: scol.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            Column {
+                                id: scol
+                                width: parent.width
+                                Repeater {
+                                    model: win.desktopSel ? win.desktopSel.shells : []
+                                    delegate: Item {
+                                        id: srow
+                                        required property var modelData
+                                        required property int index
+                                        width: scol.width
+                                        height: scell.implicitHeight + 24
+                                        Rectangle { anchors.fill: parent; radius: Theme.radius - 1; color: smouse.containsMouse ? Theme.hover : "transparent" }
+                                        Radio { x: 18; anchors.verticalCenter: parent.verticalCenter; on: win.dots === srow.modelData.id }
+                                        Column {
+                                            id: scell
+                                            x: 50
+                                            width: parent.width - 66
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 3
+                                            Row {
+                                                spacing: 8
+                                                Text { text: srow.modelData.name; color: Theme.text; font.pixelSize: 14 }
+                                                Text { visible: srow.modelData.by !== ""; text: srow.modelData.by; color: Theme.faint; font.pixelSize: 12; anchors.baseline: parent.children[0].baseline }
+                                            }
+                                            Text { text: srow.modelData.desc; color: Theme.faint; font.pixelSize: 12; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                                            Text { visible: srow.modelData.script; text: "Installs on first login with its own setup script"; color: Theme.accent; font.pixelSize: 11 }
+                                        }
+                                        Rectangle { visible: srow.index < (win.desktopSel ? win.desktopSel.shells.length : 0) - 1; anchors.bottom: parent.bottom; x: 18; width: parent.width - 36; height: 1; color: Theme.line }
+                                        MouseArea { id: smouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.dots = srow.modelData.id }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Page {
+                index: 5
+                Header { id: h5; index: 5 }
+                Column {
+                    anchors.top: h5.bottom
                     anchors.topMargin: 28
                     width: parent.width
                     spacing: 20
@@ -619,6 +763,7 @@ ApplicationWindow {
                             ReviewRow { label: "Keyboard"; value: win.keymapName(win.keymap); target: 1 }
                             ReviewRow { label: "Disk"; value: win.diskInfo ? win.diskInfo.model + ", " + win.diskInfo.sizeText + ", will be erased" : ""; target: 2 }
                             ReviewRow { label: "Account"; value: (win.fullname ? win.fullname + ", " : "") + win.username + "@" + win.hostname + (win.autologin ? ", automatic login" : ""); target: 3 }
+                            ReviewRow { label: "Desktop"; value: win.desktopSel ? win.desktopSel.name + (win.shellSel && win.shellSel.id !== "none" ? " with " + win.shellSel.name : "") : ""; target: 4 }
                             ReviewRow { label: "Graphics"; value: backend.graphics; last: true }
                         }
                     }
@@ -677,7 +822,7 @@ ApplicationWindow {
             }
 
             Page {
-                index: 5
+                index: 6
                 Column {
                     id: prog
                     y: logPane.visible ? 40 : Math.max(40, (parent.height - height) / 2 - 20)
@@ -729,9 +874,9 @@ ApplicationWindow {
                             ["tawaki install spotify", "One command for every app. tawaki picks pacman, Flathub or the AUR for you."],
                             ["tawaki update", "Updates system packages, Flatpaks and AUR packages together."],
                             ["Snapshots", "Btrfs snapshots are taken before every update, so a bad one can be rolled back."],
-                            ["Super + Space", "Opens the launcher. Super + Return opens a terminal, Super + Q closes a window."]
+                            ["Flatpak and AUR", "Flathub and the AUR are set up already. tawaki search finds apps in both."]
                         ]
-                        Timer { interval: 7000; running: win.step === 5; repeat: true; onTriggered: { tipBody.opacity = 0; tipSwap.start() } }
+                        Timer { interval: 7000; running: win.step === 6; repeat: true; onTriggered: { tipBody.opacity = 0; tipSwap.start() } }
                         Timer { id: tipSwap; interval: 200; onTriggered: { tip.n = (tip.n + 1) % tip.tips.length; tipBody.opacity = 1 } }
                         Column {
                             id: tipBody
@@ -780,7 +925,7 @@ ApplicationWindow {
             }
 
             Page {
-                index: 6
+                index: 7
                 Column {
                     y: Math.max(40, (parent.height - height) / 2 - 20)
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -809,7 +954,7 @@ ApplicationWindow {
                         spacing: 10
                         FButton { visible: !win.failed; text: "Restart now"; implicitHeight: 42; onClicked: backend.reboot() }
                         FButton { visible: !win.failed; text: "Keep exploring"; kind: "ghost"; implicitHeight: 42; onClicked: backend.quit() }
-                        FButton { visible: win.failed; text: "Try again"; implicitHeight: 42; onClicked: win.step = 4 }
+                        FButton { visible: win.failed; text: "Try again"; implicitHeight: 42; onClicked: win.step = 5 }
                         FButton {
                             visible: win.failed
                             text: "Save log"; kind: "ghost"; implicitHeight: 42
@@ -826,7 +971,7 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: 76
-            visible: win.step >= 1 && win.step <= 4
+            visible: win.step >= 1 && win.step <= 5
             Rectangle { width: parent.width; height: 1; color: Theme.line }
             Row {
                 anchors.right: parent.right
@@ -835,7 +980,7 @@ ApplicationWindow {
                 spacing: 10
                 FButton { kind: "ghost"; text: "Back"; onClicked: win.step-- }
                 FButton {
-                    text: win.step === 4 ? "Install" : "Continue"
+                    text: win.step === 5 ? "Install" : "Continue"
                     implicitWidth: 112
                     enabled: win.canNext
                     onClicked: win.next()
@@ -844,5 +989,5 @@ ApplicationWindow {
         }
     }
 
-    Shortcut { sequences: ["Return", "Enter"]; enabled: win.step >= 1 && win.step <= 3; onActivated: win.next() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: win.step >= 1 && win.step <= 4; onActivated: win.next() }
 }
