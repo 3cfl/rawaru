@@ -41,6 +41,8 @@ CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
 KERNEL = {"cachy": True}
 ESP_MNT = "/efi"
 MODE = {"alongside": False}
+STABLE_SERVER = "https://fiordland.apollo44.lat/stable/$repo/os/$arch"
+CHANNEL = {"name": "rolling", "server": STABLE_SERVER}
 
 XFCE_LOOK = r"""#!/bin/sh
 sleep 2
@@ -390,12 +392,29 @@ def pacman_conf():
     base = re.sub(r"(?m)^#?ParallelDownloads.*$", "ParallelDownloads = 10", base)
     base = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", base)
     base = re.sub(r"(?ms)^\[cachyos\].*?(?=^\[|\Z)", "", base)
+    if CHANNEL["name"] == "stable":
+        base = pin_arch_repos(base, "Server = " + CHANNEL["server"])
     if KERNEL["cachy"]:
         base = base.rstrip("\n") + "\n" + CACHY_REPO
     fd, path = tempfile.mkstemp(prefix="rawaru-pacman-", suffix=".conf")
     with os.fdopen(fd, "w") as f:
         f.write(base)
     return path
+
+
+def pin_arch_repos(conf, line):
+    out, inside = [], False
+    for l in conf.splitlines():
+        if re.match(r"^\[(core|extra|multilib)\]", l):
+            inside = True
+        elif l.startswith("["):
+            inside = False
+        elif inside and re.match(r"^(Include|Server)\s*=", l):
+            if out and out[-1] == line:
+                continue
+            l = line
+        out.append(l)
+    return "\n".join(out) + "\n"
 
 
 def pacstrap(pkgs):
@@ -411,8 +430,9 @@ def pacstrap(pkgs):
             time.sleep(0.04)
             status(f"Installing {p}", 0.45 + 0.37 * (i + 1) / total)
         return
-    status("Finding the fastest mirrors", 0.05)
-    run(["timeout", "50", "systemctl", "start", "fiordland-mirrors.service"], check=False)
+    if CHANNEL["name"] != "stable":
+        status("Finding the fastest mirrors", 0.05)
+        run(["timeout", "50", "systemctl", "start", "fiordland-mirrors.service"], check=False)
     status("Downloading packages", 0.06)
     conf = pacman_conf()
     cmd = ["pacstrap", "-K", "-C", conf, MNT, *pkgs, "--noconfirm", "--needed"]
@@ -473,6 +493,7 @@ def configure(cfg, root, uefi):
     log("added [fiordland] repo" + (" and [cachyos]" if KERNEL["cachy"] else ""))
     if KERNEL["cachy"]:
         chroot("pacman-key", "--populate", "cachyos", check=False)
+    set_channel()
     tz = cfg.get("timezone") or "UTC"
     chroot("ln", "-sf", f"/usr/share/zoneinfo/{tz}", "/etc/localtime")
     chroot("hwclock", "--systohc", check=False)
@@ -523,6 +544,17 @@ def configure(cfg, root, uefi):
         chroot("sed", "-i", f"s/^MODULES=.*/MODULES=({' '.join(GPU['modules'])})/", "/etc/mkinitcpio.conf")
     chroot("mkinitcpio", "-P")
     bootloader(cfg, root, uefi)
+
+
+def set_channel():
+    if CHANNEL["name"] != "stable":
+        return
+    if not DRY and not os.path.exists(MNT + "/usr/bin/fiordland-channel"):
+        log("this fiordland-base has no stable channel yet, staying on rolling")
+        return
+    if CHANNEL["server"] != STABLE_SERVER:
+        write("/etc/pacman.d/fiordland-stable", f"Server = {CHANNEL['server']}\n")
+    chroot("fiordland-channel", "stable")
 
 
 def bootloader(cfg, root, uefi):
@@ -737,6 +769,15 @@ def console_keymap(xkb):
     return mapping.get(xkb, "us")
 
 
+def default_channel():
+    try:
+        with open("/etc/rawaru/channel") as f:
+            c = f.read().strip()
+    except OSError:
+        return "rolling"
+    return c if c in ("stable", "rolling") else "rolling"
+
+
 def finish():
     status("Finishing up", 0.99)
     release_mnt()
@@ -769,6 +810,9 @@ def main():
         if is_uefi():
             pkgs.append("efibootmgr")
         KERNEL["cachy"] = cfg.get("kernel", "cachyos") == "cachyos"
+        CHANNEL["name"] = cfg.get("channel") or default_channel()
+        CHANNEL["server"] = cfg.get("stable_server") or STABLE_SERVER
+        log(f"channel {CHANNEL['name']}")
         GPU.update(gpu_setup(gpus()))
         pkgs += GPU["pkgs"]
         SERVICES.extend(GPU["services"])
