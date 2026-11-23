@@ -25,6 +25,12 @@ ApplicationWindow {
     property string keymap: "us"
     property string disk: backend.disks.length === 1 && backend.disks[0].big ? backend.disks[0].path : ""
     property bool understood: false
+    property string mode: "erase"
+    property var probe: null
+    property bool probing: false
+    property int optIndex: 0
+    property real fiordSize: 0
+    readonly property var opt: probe && mode === "alongside" && optIndex < probe.options.length ? probe.options[optIndex] : null
     property string fullname: ""
     property string username: ""
     property bool usernameTouched: false
@@ -41,7 +47,7 @@ ApplicationWindow {
 
     readonly property var steps: [
         { label: "Region", title: "Where are you?", sub: "Time zone and keyboard layout." },
-        { label: "Disk", title: "Choose a disk", sub: "Fiordland takes the whole disk." },
+        { label: "Disk", title: "Choose a disk", sub: "Use the whole disk, or keep Windows and install next to it." },
         { label: "Account", title: "Your account", sub: "The user you'll log in as every day." },
         { label: "Desktop", title: "Pick a desktop", sub: "You can install others later with tawaki." },
         { label: "Review", title: "Review", sub: "Nothing has been changed yet." },
@@ -62,7 +68,7 @@ ApplicationWindow {
         return null
     }
     readonly property bool canNext: step === 1 ? timezone !== "" && keymap !== ""
-        : step === 2 ? disk !== "" && understood
+        : step === 2 ? disk !== "" && !probing && understood
         : step === 3 ? youValid
         : step === 4 ? desktopSel !== null
         : true
@@ -96,6 +102,28 @@ ApplicationWindow {
     function zoneCity(z) { return z.split("/").slice(-1)[0].replace(/_/g, " ") }
     function zoneRegion(z) { return z.indexOf("/") < 0 ? "" : z.split("/").slice(0, -1).join(" / ").replace(/_/g, " ") }
 
+    function gb(b) { return (b / 1e9).toFixed(b >= 100e9 ? 0 : 1) + " GB" }
+    function pickOption(i) {
+        if (i < 0) {
+            if (mode !== "erase") understood = false
+            mode = "erase"
+            return
+        }
+        const o = probe.options[i]
+        if (mode !== "alongside" || optIndex !== i) understood = false
+        mode = "alongside"
+        optIndex = i
+        fiordSize = o.kind === "shrink" ? Math.max(o.min, Math.min(o.max, Math.round(o.partSize / 2e9) * 1e9)) : o.max
+    }
+    onDiskChanged: {
+        probe = null
+        mode = "erase"
+        understood = false
+        if (disk === "") { probing = false; return }
+        probing = true
+        backend.probe(disk)
+    }
+
     function next() {
         if (step < 1 || step > 5 || !canNext) return
         if (step === 5) { startInstall(); return }
@@ -109,7 +137,7 @@ ApplicationWindow {
         backend.install({
             disk: disk, locale: sysLocale, timezone: timezone, keymap: keymap, fullname: fullname,
             username: username, hostname: hostname, password: password, autologin: autologin, kernel: kernel,
-            desktop: desktop, shell: dots
+            desktop: desktop, shell: dots, mode: mode, shrink: opt ? opt.part : "", size: opt ? Math.round(fiordSize) : 0
         })
     }
 
@@ -120,6 +148,12 @@ ApplicationWindow {
     Connections {
         target: backend
         function onTimezoneGuessed(tz) { if (win.timezone === "UTC") win.timezone = tz }
+        function onProbed(d, res) {
+            if (d !== win.disk) return
+            win.probe = res
+            win.probing = false
+            if (res.options && res.options.length) win.pickOption(0)
+        }
         function onLogAdded(line) {
             logModel.append({ line: line })
             if (logModel.count > 1500) logModel.remove(0, 300)
@@ -517,26 +551,153 @@ ApplicationWindow {
                                 font.pixelSize: 14
                             }
                         }
+                        Column {
+                            visible: win.disk !== ""
+                            width: parent.width
+                            spacing: 10
+                            Text {
+                                visible: win.probing
+                                text: "Looking at what's on this disk..."
+                                color: Theme.muted
+                                font.pixelSize: 14
+                            }
+                            Repeater {
+                                model: win.probing || !win.probe ? [] : win.probe.options
+                                delegate: Rectangle {
+                                    id: orow
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool selected: win.mode === "alongside" && win.optIndex === index
+                                    width: parent.width
+                                    height: ocol.height + 28
+                                    radius: Theme.radius
+                                    color: omouse.containsMouse && !selected ? Theme.hover : Theme.panel
+                                    border.color: selected ? Theme.accent : Theme.line
+                                    MouseArea {
+                                        id: omouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.pickOption(orow.index)
+                                    }
+                                    Radio { x: 18; y: 16; on: orow.selected }
+                                    Column {
+                                        id: ocol
+                                        x: 50; y: 14
+                                        width: parent.width - 68
+                                        spacing: 4
+                                        Text {
+                                            text: orow.modelData.kind === "shrink"
+                                                ? "Install alongside " + (win.probe.system || orow.modelData.label)
+                                                : "Install in the free space"
+                                            color: Theme.text; font.pixelSize: 14; font.weight: Font.Medium
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: orow.modelData.kind === "shrink"
+                                                ? "Shrinks " + orow.modelData.label + " (" + orow.modelData.part + ") to make room. Nothing is deleted, and you pick the system each time the computer starts."
+                                                : win.gb(orow.modelData.max) + " of unused space. Nothing else on the disk is touched."
+                                            color: Theme.faint; font.pixelSize: 12
+                                        }
+                                        Item {
+                                            visible: orow.selected
+                                            width: parent.width
+                                            height: visible ? 64 : 0
+                                            Slider {
+                                                id: sizeSlider
+                                                y: 6
+                                                width: parent.width
+                                                from: orow.modelData.min
+                                                to: orow.modelData.max
+                                                value: win.fiordSize
+                                                stepSize: 1000000000
+                                                onMoved: win.fiordSize = value
+                                            }
+                                            Text {
+                                                anchors.left: parent.left
+                                                anchors.bottom: parent.bottom
+                                                text: "Fiordland  " + win.gb(win.fiordSize)
+                                                color: Theme.accent; font.pixelSize: 13; font.features: { "tnum": 1 }
+                                            }
+                                            Text {
+                                                visible: orow.modelData.kind === "shrink"
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                text: orow.modelData.label + " keeps  " + win.gb(orow.modelData.partSize - win.fiordSize)
+                                                color: Theme.muted; font.pixelSize: 13; font.features: { "tnum": 1 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                id: erow
+                                visible: !win.probing
+                                readonly property bool selected: win.mode === "erase"
+                                width: parent.width
+                                height: ecol.height + 28
+                                radius: Theme.radius
+                                color: emouse.containsMouse && !selected ? Theme.hover : Theme.panel
+                                border.color: selected ? Theme.accent : Theme.line
+                                MouseArea {
+                                    id: emouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.pickOption(-1)
+                                }
+                                Radio { x: 18; y: 16; on: erow.selected }
+                                Column {
+                                    id: ecol
+                                    x: 50; y: 14
+                                    width: parent.width - 68
+                                    spacing: 4
+                                    Text { text: "Erase the disk"; color: Theme.text; font.pixelSize: 14; font.weight: Font.Medium }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: "Fiordland takes the whole disk. Everything on it is removed, including other systems."
+                                        color: Theme.faint; font.pixelSize: 12
+                                    }
+                                }
+                            }
+                            Repeater {
+                                model: win.probing || !win.probe ? [] : win.probe.notes
+                                delegate: Text {
+                                    required property var modelData
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: modelData
+                                    color: Theme.faint
+                                    font.pixelSize: 12
+                                }
+                            }
+                        }
                         Text {
                             width: parent.width
                             wrapMode: Text.WordWrap
-                            text: "Btrfs with compression and automatic snapshots, zram swap, " + (backend.uefi ? "systemd-boot." : "GRUB.")
+                            text: "Btrfs with compression, zram swap, and automatic snapshots you can start from the boot menu."
                             color: Theme.faint
                             font.pixelSize: 13
                         }
                         Item {
-                            visible: win.disk !== ""
+                            visible: win.disk !== "" && !win.probing
                             width: parent.width
                             height: 40
                             Row {
                                 id: eraseRow
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 12
-                                Check { on: win.understood; tint: Theme.danger; anchors.verticalCenter: parent.verticalCenter }
+                                Check { on: win.understood; tint: win.mode === "erase" ? Theme.danger : Theme.accent; anchors.verticalCenter: parent.verticalCenter }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "Erase everything on " + (win.diskInfo ? win.diskInfo.model + " (" + win.diskInfo.sizeText + ")" : "")
-                                    color: win.understood ? Theme.danger : Theme.text
+                                    text: win.mode === "erase"
+                                        ? "Erase everything on " + (win.diskInfo ? win.diskInfo.model + " (" + win.diskInfo.sizeText + ")" : "")
+                                        : win.opt && win.opt.kind === "shrink"
+                                            ? "I have a backup of my important files"
+                                            : "Use the free space on " + (win.diskInfo ? win.diskInfo.model : "")
+                                    color: win.understood && win.mode === "erase" ? Theme.danger : Theme.text
                                     font.pixelSize: 14
                                 }
                             }
@@ -761,7 +922,9 @@ ApplicationWindow {
                             ReviewRow { label: "Language"; value: win.localeName(win.sysLocale); target: 0 }
                             ReviewRow { label: "Time zone"; value: win.timezone.replace(/_/g, " "); target: 1 }
                             ReviewRow { label: "Keyboard"; value: win.keymapName(win.keymap); target: 1 }
-                            ReviewRow { label: "Disk"; value: win.diskInfo ? win.diskInfo.model + ", " + win.diskInfo.sizeText + ", will be erased" : ""; target: 2 }
+                            ReviewRow { label: "Disk"; value: !win.diskInfo ? "" : win.opt
+                                ? win.diskInfo.model + ", " + (win.opt.kind === "shrink" ? "alongside " + (win.probe.system || win.opt.label) : "in free space") + ", Fiordland gets " + win.gb(win.fiordSize)
+                                : win.diskInfo.model + ", " + win.diskInfo.sizeText + ", will be erased"; target: 2 }
                             ReviewRow { label: "Account"; value: (win.fullname ? win.fullname + ", " : "") + win.username + "@" + win.hostname + (win.autologin ? ", automatic login" : ""); target: 3 }
                             ReviewRow { label: "Desktop"; value: win.desktopSel ? win.desktopSel.name + (win.shellSel && win.shellSel.id !== "none" ? " with " + win.shellSel.name : "") : ""; target: 4 }
                             ReviewRow { label: "Graphics"; value: backend.graphics; last: true }

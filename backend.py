@@ -4,6 +4,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 
 from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
@@ -121,6 +122,7 @@ class Backend(QObject):
     installFinished = Signal(bool, str)
     timezoneGuessed = Signal(str)
     disksChanged = Signal()
+    probed = Signal(str, "QVariantMap")
 
     def __init__(self, dry_run=False):
         super().__init__()
@@ -197,6 +199,24 @@ class Backend(QObject):
             if os.path.isfile(p):
                 return "file://" + os.path.abspath(p)
         return ""
+
+    @Slot(str)
+    def probe(self, disk):
+        def work():
+            if self._dry:
+                time.sleep(0.6)
+                res = {"disk": disk, "uefi": True, "gpt": True, "esp": disk + "1", "system": "Windows", "notes": [],
+                       "options": [{"kind": "shrink", "part": disk + "3", "label": "Windows", "max": 180 * 1000**3,
+                                    "min": 20 * 1000**3, "partSize": 240 * 1000**3}]}
+            else:
+                try:
+                    out = subprocess.run(["sudo", "-n", "python3", os.path.join(HERE, "engine.py"), "--probe", disk],
+                                         capture_output=True, text=True, timeout=600).stdout
+                    res = json.loads(out.strip().splitlines()[-1])
+                except Exception as e:
+                    res = {"disk": disk, "options": [], "notes": [f"Could not inspect this disk: {e}"]}
+            self.probed.emit(disk, res)
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot()
     def refreshDisks(self):

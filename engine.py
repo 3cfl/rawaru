@@ -9,6 +9,7 @@ import tempfile
 import time
 
 import desktops
+import disks
 
 MNT = "/mnt"
 LOCAL_REPO = "/opt/fiordland/repo"
@@ -22,13 +23,14 @@ PACKAGES = [
     "snapper", "snap-pac", "pacman-contrib", "power-profiles-daemon", "sof-firmware", "alsa-firmware", "reflector",
     "cups", "cups-filters", "cups-pk-helper", "ghostscript", "avahi", "nss-mdns", "ufw", "fwupd",
     "ntfs-3g", "exfatprogs", "udisks2", "pkgfile", "unzip", "zip", "7zip",
+    "grub", "grub-btrfs", "inotify-tools", "os-prober",
 ]
 
 SERVICES = [
     "NetworkManager", "bluetooth", "systemd-timesyncd", "fstrim.timer",
     "power-profiles-daemon", "snapper-timeline.timer", "snapper-cleanup.timer", "reflector.timer",
     "tawaki-catalogue.timer", "cups.socket", "avahi-daemon", "ufw", "systemd-oomd",
-    "fwupd-refresh.timer", "paccache.timer", "pkgfile-update.timer",
+    "fwupd-refresh.timer", "paccache.timer", "pkgfile-update.timer", "grub-btrfsd",
 ]
 
 SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cache/pacman/pkg"), ("@snapshots", ".snapshots")]
@@ -37,6 +39,8 @@ FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordland.apoll
 CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
 CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
 KERNEL = {"cachy": True}
+ESP_MNT = "/efi"
+MODE = {"alongside": False}
 
 DRY = False
 
@@ -166,26 +170,90 @@ def guest_tools():
     return [], []
 
 
-def partition(cfg):
-    disk = cfg["disk"]
-    uefi = is_uefi()
-    status("Preparing your disk", 0.01)
+def release_disk(disk):
     run(["swapoff", "-a"], check=False)
     run(["umount", "-R", MNT], check=False)
     for line in (run(["lsblk", "-lnpo", "NAME", disk], check=False) or "").split()[1:]:
         run(["umount", line], check=False)
+
+
+def settle(disk):
+    run(["partprobe", disk], check=False)
+    run(["udevadm", "settle"], check=False)
+
+
+def erase(disk, uefi):
+    status("Preparing your disk", 0.01)
     run(["wipefs", "-af", disk])
     run(["sgdisk", "--zap-all", disk])
     if uefi:
-        run(["sgdisk", "-n1:0:+1G", "-t1:ef00", "-c1:EFI", "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk])
+        run(["sgdisk", "-n1:0:+512M", "-t1:ef00", "-c1:EFI", "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk])
     else:
         run(["sgdisk", "-n1:0:+1M", "-t1:ef02", "-c1:BIOS", "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk])
-    run(["partprobe", disk], check=False)
-    run(["udevadm", "settle"], check=False)
-    boot, root = part_name(disk, 1), part_name(disk, 2)
-    status("Formatting", 0.03)
+    settle(disk)
+    esp, root = part_name(disk, 1), part_name(disk, 2)
     if uefi:
-        run(["mkfs.fat", "-F32", "-n", "EFI", boot])
+        status("Formatting", 0.03)
+        run(["mkfs.fat", "-F32", "-n", "EFI", esp])
+    return esp if uefi else "", root
+
+
+def alongside(cfg):
+    disk = cfg["disk"]
+    status("Checking your disk", 0.01)
+    if DRY:
+        log(f"alongside on {disk}: {cfg.get('shrink') or 'free space'}, {cfg.get('size')} bytes")
+        return part_name(disk, 1), part_name(disk, 9)
+    info = disks.probe(disk)
+    want = cfg.get("shrink") or ""
+    opt = next((o for o in info["options"] if o["part"] == want), None)
+    if not opt or not info["esp"]:
+        raise RuntimeError("This disk can no longer be shared; go back and choose again")
+    size = int(cfg.get("size") or opt["max"])
+    size = max(opt["min"], min(size, opt["max"]))
+    pt = disks.table(disk)
+    sector = pt.get("sectorsize", 512)
+    if opt["kind"] == "shrink":
+        part = opt["part"]
+        before = disks.snapshot(disk)[part]
+        keep_part = (opt["partSize"] - size) // disks.MIB * disks.MIB
+        keep_fs = keep_part - disks.MIB
+        status(f"Shrinking {opt['label']}", 0.02)
+        run(["ntfsresize", "--no-action", "--no-progress-bar", "--size", str(keep_fs), part])
+        run(["ntfsresize", "--no-progress-bar", "--size", str(keep_fs), part], inp="y\n")
+        num = re.search(r"(\d+)$", part).group(1)
+        run(["sfdisk", "--no-reread", "--no-tell-kernel", "-N", num, disk], inp=f",{keep_part // sector}\n")
+        settle(disk)
+        after = disks.snapshot(disk)[part]
+        if after.get("uuid") != before.get("uuid") or after["start"] != before["start"]:
+            raise RuntimeError("Windows partition changed unexpectedly after resizing")
+        run(["ntfsresize", "--info", "--force", "--no-progress-bar", part])
+        whole = True
+    else:
+        whole = size >= opt["max"] - disks.MIB
+    status("Creating the Fiordland partition", 0.03)
+    old = set(disks.snapshot(disk))
+    end = "0" if whole else f"+{size // disks.MIB}M"
+    run(["sgdisk", f"-n0:0:{end}", "-t0:8304", "-c0:Fiordland", disk])
+    settle(disk)
+    new = sorted(set(disks.snapshot(disk)) - old)
+    if len(new) != 1:
+        raise RuntimeError("Could not find the new partition")
+    return info["esp"], new[0]
+
+
+def partition(cfg):
+    disk = cfg["disk"]
+    uefi = is_uefi()
+    release_disk(disk)
+    MODE["alongside"] = cfg.get("mode") == "alongside"
+    if MODE["alongside"]:
+        if not uefi:
+            raise RuntimeError("Installing alongside needs UEFI")
+        esp, root = alongside(cfg)
+    else:
+        esp, root = erase(disk, uefi)
+    status("Formatting", 0.04)
     run(["mkfs.btrfs", "-f", "-L", "fiordland", root])
     run(["mount", root, MNT])
     for name, _ in SUBVOLS:
@@ -198,8 +266,8 @@ def partition(cfg):
         run(["mount", "-o", f"{MOUNT_OPTS},subvol={name}", root, target])
     if uefi:
         if not DRY:
-            os.makedirs(f"{MNT}/boot", exist_ok=True)
-        run(["mount", "-o", "umask=0077", boot, f"{MNT}/boot"])
+            os.makedirs(MNT + ESP_MNT, exist_ok=True)
+        run(["mount", "-o", "umask=0077", esp, MNT + ESP_MNT])
     return root, uefi
 
 
@@ -335,41 +403,52 @@ def configure(cfg, root, uefi):
 
     status("Building the boot image", 0.92)
     kms = "" if GPU["nvidia"] else " kms"
-    hooks = f"HOOKS=(base systemd autodetect microcode modconf{kms} keyboard sd-vconsole block filesystems fsck)"
+    hooks = f"HOOKS=(base udev autodetect microcode modconf{kms} keyboard keymap consolefont block filesystems fsck grub-btrfs-overlayfs)"
     chroot("sed", "-i", f"s/^HOOKS=.*/{hooks}/", "/etc/mkinitcpio.conf")
     if GPU["modules"]:
         chroot("sed", "-i", f"s/^MODULES=.*/MODULES=({' '.join(GPU['modules'])})/", "/etc/mkinitcpio.conf")
     chroot("mkinitcpio", "-P")
+    bootloader(cfg, root, uefi)
 
+
+def bootloader(cfg, root, uefi):
     status("Installing the bootloader", 0.96)
     uuid = "" if DRY else subprocess.run(["blkid", "-s", "UUID", "-o", "value", root],
                                          capture_output=True, text=True).stdout.strip()
     extra = "".join(f" {p}" for p in GPU["params"])
-    opts = f"root=UUID={uuid} rootflags=subvol=@ rw quiet loglevel=3 nowatchdog{extra}"
-    main_k = "linux-cachyos" if KERNEL["cachy"] else "linux"
     if uefi:
-        chroot("bootctl", "install", "--variables=yes")
-        write("/boot/loader/loader.conf", "default fiordland.conf\ntimeout 2\nconsole-mode max\neditor no\n")
-
-        def entry(name, title, k, o):
-            write(f"/boot/loader/entries/{name}.conf",
-                  f"title   {title}\nlinux   /vmlinuz-{k}\ninitrd  /initramfs-{k}.img\noptions {o}\n")
-
-        entry("fiordland", "Fiordland Linux", main_k, opts)
-        if KERNEL["cachy"]:
-            entry("fiordland-arch", "Fiordland Linux (Arch kernel)", "linux", opts)
-        entry("fiordland-safe", "Fiordland Linux (safe graphics)", "linux",
-              f"root=UUID={uuid} rootflags=subvol=@ rw nomodeset")
+        chroot("grub-install", "--target=x86_64-efi", f"--efi-directory={ESP_MNT}", "--bootloader-id=Fiordland")
+        if not MODE["alongside"]:
+            chroot("grub-install", "--target=x86_64-efi", f"--efi-directory={ESP_MNT}", "--removable", check=False)
     else:
         chroot("grub-install", "--target=i386-pc", cfg["disk"])
-        chroot("sed", "-i", "-e", 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Fiordland"/',
-               "-e", 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/',
-               "-e", f's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog{extra}"|',
-               "/etc/default/grub")
-        if KERNEL["cachy"] and not DRY:
-            with open(f"{MNT}/etc/default/grub", "a") as f:
-                f.write('\nGRUB_TOP_LEVEL="/boot/vmlinuz-linux-cachyos"\n')
-        chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
+    timeout = "5" if MODE["alongside"] else "3"
+    chroot("sed", "-i", "-e", 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Fiordland"/',
+           "-e", f"s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT={timeout}/",
+           "-e", f's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog{extra}"|',
+           "-e", "s/^#\\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/",
+           "/etc/default/grub")
+    if not DRY:
+        with open(f"{MNT}/etc/default/grub") as f:
+            g = f.read()
+        if "GRUB_DISABLE_OS_PROBER=false" not in g:
+            g += "\nGRUB_DISABLE_OS_PROBER=false\n"
+        g += "\nGRUB_DISABLE_BOOTNEXT=true\n"
+        if KERNEL["cachy"]:
+            g += '\nGRUB_TOP_LEVEL="/boot/vmlinuz-linux-cachyos"\n'
+        with open(f"{MNT}/etc/default/grub", "w") as f:
+            f.write(g)
+    write("/etc/grub.d/11_fiordland_safe",
+          "#!/bin/sh\nexec tail -n +3 $0\n"
+          "menuentry 'Fiordland Linux (safe graphics)' --class fiordland --class gnu-linux {\n"
+          f"    search --no-floppy --fs-uuid --set=root {uuid}\n"
+          f"    linux /@/boot/vmlinuz-linux root=UUID={uuid} rootflags=subvol=@ rw nomodeset\n"
+          "    initrd /@/boot/initramfs-linux.img\n"
+          "}\n", 0o755)
+    chroot("sed", "-i", "-e", 's/^#\\?GRUB_BTRFS_SUBMENUNAME=.*/GRUB_BTRFS_SUBMENUNAME="Fiordland snapshots"/',
+           "-e", 's/^#\\?GRUB_BTRFS_LIMIT=.*/GRUB_BTRFS_LIMIT="20"/',
+           "/etc/default/grub-btrfs/config")
+    chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 
 
 def home(user, path, text, mode=0o644):
@@ -551,8 +630,11 @@ def main():
     args = sys.argv[1:]
     DRY = "--dry-run" in args
     args = [a for a in args if a != "--dry-run"]
+    if len(args) == 2 and args[0] == "--probe":
+        print(json.dumps(disks.probe(args[1])))
+        return
     if not args:
-        print("usage: engine.py [--dry-run] config.json", file=sys.stderr)
+        print("usage: engine.py [--dry-run] config.json | --probe DISK", file=sys.stderr)
         sys.exit(2)
     with open(args[0]) as f:
         cfg = json.load(f)
@@ -567,8 +649,8 @@ def main():
         vendor = cpu_vendor()
         if vendor:
             pkgs.append(f"{vendor}-ucode")
-        if not is_uefi():
-            pkgs.append("grub")
+        if is_uefi():
+            pkgs.append("efibootmgr")
         KERNEL["cachy"] = cfg.get("kernel", "cachyos") == "cachyos"
         GPU.update(gpu_setup(gpus()))
         pkgs += GPU["pkgs"]
