@@ -1,0 +1,21 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pacman -Syu --noconfirm --needed python pyside6 qt6-declarative ruff
+      - run: ruff check --select F,E9 .
+      - run: python -m py_compile *.py
+      - run: /usr/lib/qt6/bin/qmllint qml/*.qml
+      - run: QT_QPA_PLATFORM=offscreen python -c "import backend, desktops, engine"
