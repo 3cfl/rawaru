@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import glob
 import json
 import os
 import re
@@ -108,6 +109,47 @@ def virt():
         return ""
 
 
+def gpus():
+    found = []
+    for d in glob.glob("/sys/bus/pci/devices/*"):
+        try:
+            with open(f"{d}/class") as f:
+                if not f.read().startswith("0x03"):
+                    continue
+            with open(f"{d}/vendor") as f:
+                vendor = f.read().strip()
+            with open(f"{d}/device") as f:
+                device = int(f.read().strip(), 16)
+        except (OSError, ValueError):
+            continue
+        found.append((vendor, device))
+    return found
+
+
+def gpu_setup(found):
+    g = {"pkgs": ["mesa", "lib32-mesa", "vulkan-icd-loader", "lib32-vulkan-icd-loader"],
+         "services": [], "modules": [], "params": [], "nvidia": False}
+    vendors = {v for v, _ in found}
+    if "0x8086" in vendors:
+        g["pkgs"] += ["vulkan-intel", "lib32-vulkan-intel", "intel-media-driver"]
+    if "0x1002" in vendors:
+        g["pkgs"] += ["vulkan-radeon", "lib32-vulkan-radeon"]
+    nv = [dev for v, dev in found if v == "0x10de"]
+    if nv and max(nv) >= 0x1e00:
+        g["nvidia"] = True
+        g["pkgs"] += ["nvidia-open", "nvidia-utils", "lib32-nvidia-utils", "nvidia-settings",
+                      "egl-wayland", "libva-nvidia-driver"]
+        g["services"] += ["nvidia-suspend", "nvidia-hibernate", "nvidia-resume"]
+        g["modules"] += ["nvidia", "nvidia_modeset", "nvidia_uvm", "nvidia_drm"]
+        g["params"] += ["nvidia_drm.modeset=1", "nvidia_drm.fbdev=1"]
+    elif nv:
+        g["pkgs"] += ["vulkan-nouveau", "lib32-vulkan-nouveau"]
+    return g
+
+
+GPU = gpu_setup([])
+
+
 def guest_tools():
     v = virt()
     if v in ("kvm", "qemu"):
@@ -163,6 +205,7 @@ def pacman_conf():
     repo = f"[fiordland]\nSigLevel = Optional TrustAll\nServer = file://{LOCAL_REPO}\n\n"
     base = base.replace("[core]", repo + "[core]", 1)
     base = re.sub(r"(?m)^#?ParallelDownloads.*$", "ParallelDownloads = 10", base)
+    base = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", base)
     fd, path = tempfile.mkstemp(prefix="rawaru-pacman-", suffix=".conf")
     with os.fdopen(fd, "w") as f:
         f.write(base)
@@ -230,6 +273,7 @@ def configure(cfg, root, uefi):
     if not DRY:
         with open(f"{MNT}/etc/pacman.conf") as f:
             pc = f.read()
+        pc = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", pc)
         if "[fiordland]" not in pc:
             pc = pc.replace("[core]", FIORD_REPO + "[core]", 1)
             with open(f"{MNT}/etc/pacman.conf", "w") as f:
@@ -286,14 +330,18 @@ def configure(cfg, root, uefi):
     chroot("flatpak", "update", "--appstream", "--system", "--noninteractive", check=False)
 
     status("Building the boot image", 0.92)
-    hooks = "HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck)"
+    kms = "" if GPU["nvidia"] else " kms"
+    hooks = f"HOOKS=(base systemd autodetect microcode modconf{kms} keyboard sd-vconsole block filesystems fsck)"
     chroot("sed", "-i", f"s/^HOOKS=.*/{hooks}/", "/etc/mkinitcpio.conf")
+    if GPU["modules"]:
+        chroot("sed", "-i", f"s/^MODULES=.*/MODULES=({' '.join(GPU['modules'])})/", "/etc/mkinitcpio.conf")
     chroot("mkinitcpio", "-P")
 
     status("Installing the bootloader", 0.96)
     uuid = "" if DRY else subprocess.run(["blkid", "-s", "UUID", "-o", "value", root],
                                          capture_output=True, text=True).stdout.strip()
-    opts = f"root=UUID={uuid} rootflags=subvol=@ rw quiet loglevel=3 nowatchdog"
+    extra = "".join(f" {p}" for p in GPU["params"])
+    opts = f"root=UUID={uuid} rootflags=subvol=@ rw quiet loglevel=3 nowatchdog{extra}"
     if uefi:
         chroot("bootctl", "install", "--variables=yes")
         write("/boot/loader/loader.conf", "default fiordland.conf\ntimeout 2\nconsole-mode max\neditor no\n")
@@ -306,7 +354,7 @@ def configure(cfg, root, uefi):
         chroot("grub-install", "--target=i386-pc", cfg["disk"])
         chroot("sed", "-i", "-e", 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Fiordland"/',
                "-e", 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/',
-               "-e", 's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog"|',
+               "-e", f's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog{extra}"|',
                "/etc/default/grub")
         chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 
@@ -365,6 +413,9 @@ def main():
             pkgs.append(f"{vendor}-ucode")
         if not is_uefi():
             pkgs.append("grub")
+        GPU.update(gpu_setup(gpus()))
+        pkgs += GPU["pkgs"]
+        SERVICES.extend(GPU["services"])
         gpkgs, gsvcs = guest_tools()
         pkgs += gpkgs
         SERVICES.extend(gsvcs)
