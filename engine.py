@@ -37,8 +37,9 @@ SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cach
 MOUNT_OPTS = "noatime,compress=zstd:1"
 FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordlandlinux.org/repo/$arch\n\n"
 CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
-CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
-KERNEL = {"cachy": True}
+CACHY_PKGS = ["cachyos-keyring", "cachyos-mirrorlist"]
+GAMING = ["fiordland-gaming"]
+KERNEL = {"cachy": True, "repo": True}
 ESP_MNT = "/efi"
 MODE = {"alongside": False}
 STABLE_SERVER = "https://fiordlandlinux.org/stable/$repo/os/$arch"
@@ -196,6 +197,8 @@ def gpu_setup(found):
         g["params"] += ["nvidia_drm.modeset=1", "nvidia_drm.fbdev=1"]
     elif nv:
         g["pkgs"] += ["vulkan-nouveau", "lib32-vulkan-nouveau"]
+    if not g["nvidia"] and not any(p.startswith("vulkan-") for p in g["pkgs"]):
+        g["pkgs"] += ["vulkan-swrast", "lib32-vulkan-swrast"]
     return g
 
 
@@ -394,7 +397,7 @@ def pacman_conf():
     base = re.sub(r"(?ms)^\[cachyos\].*?(?=^\[|\Z)", "", base)
     if CHANNEL["name"] == "stable":
         base = pin_arch_repos(base, "Server = " + CHANNEL["server"])
-    if KERNEL["cachy"]:
+    if KERNEL["repo"]:
         base = base.rstrip("\n") + "\n" + CACHY_REPO
     fd, path = tempfile.mkstemp(prefix="rawaru-pacman-", suffix=".conf")
     with os.fdopen(fd, "w") as f:
@@ -486,12 +489,12 @@ def configure(cfg, root, uefi):
         pc = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", pc)
         if "[fiordland]" not in pc:
             pc = pc.replace("[core]", FIORD_REPO + "[core]", 1)
-        if KERNEL["cachy"] and "[cachyos]" not in pc:
+        if KERNEL["repo"] and "[cachyos]" not in pc:
             pc = pc.rstrip("\n") + "\n" + CACHY_REPO
         with open(f"{MNT}/etc/pacman.conf", "w") as f:
             f.write(pc)
-    log("added [fiordland] repo" + (" and [cachyos]" if KERNEL["cachy"] else ""))
-    if KERNEL["cachy"]:
+    log("added [fiordland] repo" + (" and [cachyos]" if KERNEL["repo"] else ""))
+    if KERNEL["repo"]:
         chroot("pacman-key", "--populate", "cachyos", check=False)
     set_channel()
     tz = cfg.get("timezone") or "UTC"
@@ -819,16 +822,18 @@ def main():
         gpkgs, gsvcs = guest_tools()
         pkgs += gpkgs
         SERVICES.extend(gsvcs)
+        pkgs += CACHY_PKGS + GAMING
         if KERNEL["cachy"]:
-            pkgs += CACHY_PKGS
+            pkgs.append("linux-cachyos")
         try:
             pacstrap(pkgs)
         except RuntimeError:
-            if not KERNEL["cachy"]:
+            if not KERNEL["repo"]:
                 raise
             log("CachyOS packages unavailable, falling back to the Arch kernel")
-            KERNEL["cachy"] = False
-            pacstrap([p for p in pkgs if p not in CACHY_PKGS and not p.startswith("linux-cachyos")])
+            KERNEL["cachy"] = KERNEL["repo"] = False
+            drop = set(CACHY_PKGS + GAMING)
+            pacstrap([p for p in pkgs if p not in drop and not p.startswith("linux-cachyos")])
         configure(cfg, root, uefi)
         finish()
         emit(progress=1.0, status="Fiordland is installed", done=True)
