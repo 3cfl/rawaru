@@ -1,5 +1,7 @@
 # rawaru
 
+<p><a href="https://donate.stripe.com/8x25kFfe96fn0WL6X12wU00"><img src=".github/donate.svg" alt="Donate to Fiordland"></a> <a href="https://discord.gg/gy4ANH2Q9V"><img src=".github/discord.svg" alt="Join the Fiordland Discord"></a></p>
+
 The graphical installer for [Fiordland Linux](https://fiordlandlinux.org), built with PySide6 and QML.
 
 - Pick from 11 desktops and 13 window managers, with optional dotfiles
