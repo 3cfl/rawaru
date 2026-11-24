@@ -1,6 +1,6 @@
 # rawaru
 
-The graphical installer for [Fiordland Linux](https://fiordland.apollo44.lat), built with PySide6 and QML.
+The graphical installer for [Fiordland Linux](https://fiordlandlinux.org), built with PySide6 and QML.
 
 - Pick from 11 desktops and 13 window managers, with optional dotfiles
 - Btrfs with snapper snapshots you can boot from the GRUB menu (grub-btrfs), zram swap

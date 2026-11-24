@@ -35,13 +35,13 @@ SERVICES = [
 
 SUBVOLS = [("@", ""), ("@home", "home"), ("@log", "var/log"), ("@pkg", "var/cache/pacman/pkg"), ("@snapshots", ".snapshots")]
 MOUNT_OPTS = "noatime,compress=zstd:1"
-FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordland.apollo44.lat/repo/$arch\n\n"
+FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordlandlinux.org/repo/$arch\n\n"
 CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
 CACHY_PKGS = ["linux-cachyos", "cachyos-keyring", "cachyos-mirrorlist"]
 KERNEL = {"cachy": True}
 ESP_MNT = "/efi"
 MODE = {"alongside": False}
-STABLE_SERVER = "https://fiordland.apollo44.lat/stable/$repo/os/$arch"
+STABLE_SERVER = "https://fiordlandlinux.org/stable/$repo/os/$arch"
 CHANNEL = {"name": "rolling", "server": STABLE_SERVER}
 
 XFCE_LOOK = r"""#!/bin/sh
