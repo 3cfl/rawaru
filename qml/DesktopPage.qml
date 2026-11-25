@@ -43,7 +43,7 @@ StepPage {
                     name: "eco"
                     size: 20
                     fill: page.app.lowend ? 1 : 0
-                    color: page.app.lowend ? Theme.tertiary : Theme.onSurfaceVariant
+                    color: page.app.lowend ? Theme.tertiary : Theme.inkSurfaceVariant
                 }
                 Txt {
                     anchors.verticalCenter: parent.verticalCenter
@@ -71,7 +71,7 @@ StepPage {
         Txt {
             text: "Lighter defaults: no gaming tools or 32-bit libraries, and a light desktop is suggested."
             role: Theme.bodyM
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
         }
     }
 
@@ -115,7 +115,7 @@ StepPage {
                     badge: cell.modelData.recommended && !page.app.lowend ? "Recommended"
                         : cell.modelData.light && page.app.lowend ? "Light" : ""
                     badgeColor: cell.modelData.recommended && !page.app.lowend ? Theme.primaryContainer : Theme.tertiaryContainer
-                    badgeInk: cell.modelData.recommended && !page.app.lowend ? Theme.onPrimaryContainer : Theme.onTertiaryContainer
+                    badgeInk: cell.modelData.recommended && !page.app.lowend ? Theme.inkPrimaryContainer : Theme.inkTertiaryContainer
                     onClicked: page.app.pickDesktop(cell.modelData)
                 }
             }

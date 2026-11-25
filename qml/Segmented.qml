@@ -55,7 +55,7 @@ Row {
                 anchors.fill: parent
                 leftRadius: box.leftRadius
                 rightRadius: box.rightRadius
-                color: Theme.alpha(Theme.onSurface, mouse.pressed ? Motion.statePressed : mouse.containsMouse || cell.activeFocus ? Motion.stateHover : 0)
+                color: Theme.alpha(Theme.inkSurface, mouse.pressed ? Motion.statePressed : mouse.containsMouse || cell.activeFocus ? Motion.stateHover : 0)
             }
 
             Row {
@@ -67,14 +67,14 @@ Row {
                     name: cell.on ? "check" : (cell.modelData.icon || "")
                     size: 18
                     weight: cell.on ? 600 : 400
-                    color: cell.on ? Theme.onSecondaryContainer : Theme.onSurfaceVariant
+                    color: cell.on ? Theme.inkSecondaryContainer : Theme.inkSurfaceVariant
                 }
                 Txt {
                     id: label
                     anchors.verticalCenter: parent.verticalCenter
                     text: cell.modelData.label
                     role: Theme.labelL
-                    color: cell.on ? Theme.onSecondaryContainer : Theme.onSurface
+                    color: cell.on ? Theme.inkSecondaryContainer : Theme.inkSurface
                 }
             }
 

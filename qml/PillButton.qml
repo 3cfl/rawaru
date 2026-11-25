@@ -14,16 +14,16 @@ Item {
 
     signal clicked
 
-    readonly property color container: !enabled ? (variant === "text" || variant === "outlined" ? "transparent" : Theme.alpha(Theme.onSurface, 0.12))
+    readonly property color container: !enabled ? (variant === "text" || variant === "outlined" ? "transparent" : Theme.alpha(Theme.inkSurface, 0.12))
         : variant === "filled" ? (danger ? Theme.error : Theme.primary)
         : variant === "tonal" ? (danger ? Theme.errorContainer : Theme.secondaryContainer)
         : variant === "glass" ? Theme.glassHigh
         : "transparent"
-    readonly property color content: !enabled ? Theme.alpha(Theme.onSurface, 0.38)
-        : variant === "filled" ? (danger ? Theme.onError : Theme.onPrimary)
-        : variant === "tonal" ? (danger ? Theme.onErrorContainer : Theme.onSecondaryContainer)
-        : variant === "glass" ? Theme.onSurface
-        : variant === "outlined" ? Theme.onSurfaceVariant
+    readonly property color content: !enabled ? Theme.alpha(Theme.inkSurface, 0.38)
+        : variant === "filled" ? (danger ? Theme.inkError : Theme.inkPrimary)
+        : variant === "tonal" ? (danger ? Theme.inkErrorContainer : Theme.inkSecondaryContainer)
+        : variant === "glass" ? Theme.inkSurface
+        : variant === "outlined" ? Theme.inkSurfaceVariant
         : danger ? Theme.error : Theme.primary
     readonly property int pad: size >= 56 ? 28 : 24
 
@@ -40,7 +40,7 @@ Item {
         radius: btn.pressed ? Theme.md : height / 2
         color: btn.container
         border.width: btn.variant === "outlined" ? 1 : 0
-        border.color: btn.enabled ? Theme.outlineVariant : Theme.alpha(Theme.onSurface, 0.12)
+        border.color: btn.enabled ? Theme.outlineVariant : Theme.alpha(Theme.inkSurface, 0.12)
         Behavior on radius {
             enabled: Motion.animate
             SpringAnimation { spring: Motion.fastSpring; damping: Motion.fastDamping; epsilon: 0.1 }

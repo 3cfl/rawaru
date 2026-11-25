@@ -64,7 +64,7 @@ StepPage {
                 Txt {
                     text: page.app.backend.status || "Starting"
                     role: Theme.bodyL
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                 }
             }
         }
@@ -107,7 +107,7 @@ StepPage {
                     text: modelData.label
                     icon: index < page.stage ? "check" : modelData.icon
                     tonal: index <= page.stage
-                    tint: index === page.stage ? Theme.onPrimaryContainer : (index < page.stage ? Theme.onSecondaryContainer : Theme.onSurfaceVariant)
+                    tint: index === page.stage ? Theme.inkPrimaryContainer : (index < page.stage ? Theme.inkSecondaryContainer : Theme.inkSurfaceVariant)
                     opacity: index > page.stage ? 0.6 : 1
                 }
             }
@@ -138,7 +138,7 @@ StepPage {
                 anchors.centerIn: parent
                 name: "lightbulb"
                 fill: 1
-                color: Theme.onTertiaryContainer
+                color: Theme.inkTertiaryContainer
             }
         }
         Column {
@@ -157,7 +157,7 @@ StepPage {
                 width: parent.width
                 text: page.tips[page.tipIndex][1]
                 role: Theme.bodyM
-                color: Theme.onSurfaceVariant
+                color: Theme.inkSurfaceVariant
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
@@ -214,7 +214,7 @@ StepPage {
                 text: line
                 role: Theme.bodyS
                 font.family: Theme.mono
-                color: Theme.onSurfaceVariant
+                color: Theme.inkSurfaceVariant
                 elide: Text.ElideRight
             }
         }

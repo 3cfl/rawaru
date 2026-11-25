@@ -5,7 +5,7 @@ Item {
 
     property bool running: visible
     property bool contained: false
-    property color color: contained ? Theme.onPrimaryContainer : Theme.primary
+    property color color: contained ? Theme.inkPrimaryContainer : Theme.primary
     readonly property var sequence: [10, 9, 5, 4, 7, 12, 6]
     property int stage: 0
     property real phase: 0

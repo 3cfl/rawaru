@@ -8,7 +8,7 @@ Item {
     property bool checkable: false
     property bool checked: false
     property int size: 40
-    property color tint: Theme.onSurfaceVariant
+    property color tint: Theme.inkSurfaceVariant
     readonly property bool hovered: mouse.containsMouse
     readonly property bool pressed: mouse.pressed
 
@@ -17,9 +17,9 @@ Item {
     readonly property color container: variant === "filled" ? (checked || !checkable ? Theme.primary : Theme.surfaceContainerHighest)
         : variant === "tonal" ? (checked ? Theme.secondary : Theme.secondaryContainer)
         : checked ? Theme.secondaryContainer : "transparent"
-    readonly property color content: variant === "filled" ? (checked || !checkable ? Theme.onPrimary : Theme.primary)
-        : variant === "tonal" ? (checked ? Theme.surface : Theme.onSecondaryContainer)
-        : checked ? Theme.onSecondaryContainer : tint
+    readonly property color content: variant === "filled" ? (checked || !checkable ? Theme.inkPrimary : Theme.primary)
+        : variant === "tonal" ? (checked ? Theme.surface : Theme.inkSecondaryContainer)
+        : checked ? Theme.inkSecondaryContainer : tint
 
     implicitWidth: size
     implicitHeight: size

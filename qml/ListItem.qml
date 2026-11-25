@@ -12,7 +12,7 @@ Item {
     property bool danger: false
     property string badge
     property color badgeColor: Theme.tertiaryContainer
-    property color badgeInk: Theme.onTertiaryContainer
+    property color badgeInk: Theme.inkTertiaryContainer
     property int supportingLines: 2
     property bool mono: false
     readonly property bool hovered: mouse.containsMouse
@@ -42,7 +42,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: parent.radius
-            color: Theme.onSurface
+            color: Theme.inkSurface
             opacity: !item.interactive ? 0 : mouse.pressed ? Motion.statePressed : item.hovered || item.activeFocus ? Motion.stateHover : 0
         }
     }
@@ -64,14 +64,14 @@ Item {
             anchors.centerIn: parent
             checked: item.selected
             tint: item.danger ? Theme.error : Theme.primary
-            ink: item.danger ? Theme.onError : Theme.onPrimary
+            ink: item.danger ? Theme.inkError : Theme.inkPrimary
         }
         Icon {
             visible: item.leading === "icon"
             anchors.centerIn: parent
             name: item.icon
             fill: item.selected ? 1 : 0
-            color: item.danger ? Theme.error : item.selected ? Theme.onSecondaryContainer : Theme.onSurfaceVariant
+            color: item.danger ? Theme.error : item.selected ? Theme.inkSecondaryContainer : Theme.inkSurfaceVariant
         }
     }
 
@@ -93,7 +93,7 @@ Item {
                 role: Theme.bodyL
                 emphasized: item.selected
                 elide: Text.ElideRight
-                color: item.danger && item.selected ? Theme.error : item.selected ? Theme.onSecondaryContainer : Theme.onSurface
+                color: item.danger && item.selected ? Theme.error : item.selected ? Theme.inkSecondaryContainer : Theme.inkSurface
             }
             Rectangle {
                 id: chip
@@ -118,7 +118,7 @@ Item {
             text: item.supporting
             role: Theme.bodyM
             font.family: item.mono ? Theme.mono : (role.size >= 24 ? Theme.display : Theme.font)
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
             wrapMode: Text.WordWrap
             maximumLineCount: item.supportingLines
             elide: Text.ElideRight

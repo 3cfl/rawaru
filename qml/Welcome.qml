@@ -42,7 +42,7 @@ Item {
                 name: "landscape"
                 size: 20
                 fill: 1
-                color: Theme.onPrimary
+                color: Theme.inkPrimary
             }
         }
         Txt {
@@ -89,7 +89,7 @@ Item {
         Txt {
             text: "welcome to"
             role: welcome.roomy ? Theme.displayS : Theme.headlineL
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
         }
         Txt {
             text: "fiordland"
@@ -101,7 +101,7 @@ Item {
             width: Math.min(parent.width, 500)
             text: "Install it on this computer, or keep trying it live. Nothing on your disks changes until you say so."
             role: Theme.bodyL
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
             wrapMode: Text.WordWrap
             lineHeightMode: Text.ProportionalHeight
             lineHeight: 1.3

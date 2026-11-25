@@ -11,7 +11,7 @@ Text {
     width: size
     height: size
     text: Theme.hasSymbols ? name : ""
-    color: Theme.onSurfaceVariant
+    color: Theme.inkSurfaceVariant
     font.family: Theme.symbols
     font.pixelSize: size
     font.variableAxes: ({ "FILL": icon.fill, "wght": icon.weight, "GRAD": 0, "opsz": Math.max(20, Math.min(48, icon.size)) })

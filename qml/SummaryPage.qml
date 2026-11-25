@@ -73,7 +73,7 @@ StepPage {
                             Icon {
                                 anchors.centerIn: parent
                                 name: tile.modelData.icon
-                                color: tile.modelData.danger ? Theme.onErrorContainer : Theme.onSecondaryContainer
+                                color: tile.modelData.danger ? Theme.inkErrorContainer : Theme.inkSecondaryContainer
                             }
                         }
                         Column {
@@ -140,7 +140,7 @@ StepPage {
                         width: parent.width
                         text: page.kernelText[page.app.kernel] || ""
                         role: Theme.bodyM
-                        color: Theme.onSurfaceVariant
+                        color: Theme.inkSurfaceVariant
                         wrapMode: Text.WordWrap
                     }
 

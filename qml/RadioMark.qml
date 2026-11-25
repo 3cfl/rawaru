@@ -14,7 +14,7 @@ Item {
         radius: width / 2
         color: "transparent"
         border.width: 2
-        border.color: radio.checked ? radio.tint : Theme.onSurfaceVariant
+        border.color: radio.checked ? radio.tint : Theme.inkSurfaceVariant
         Behavior on border.color {
             enabled: Motion.animate
             ColorAnimation { duration: Motion.durShort }

@@ -62,7 +62,7 @@ StepPage {
                                 anchors.centerIn: parent
                                 name: page.diskIcon(dcard.modelData.kind)
                                 fill: dcard.chosen ? 1 : 0
-                                color: dcard.chosen ? Theme.onPrimary : Theme.onSecondaryContainer
+                                color: dcard.chosen ? Theme.inkPrimary : Theme.inkSecondaryContainer
                             }
                         }
                         Txt {
@@ -72,7 +72,7 @@ StepPage {
                             text: dcard.modelData.sizeText
                             role: Theme.titleL
                             emphasized: true
-                            color: dcard.chosen ? Theme.onPrimaryContainer : Theme.onSurface
+                            color: dcard.chosen ? Theme.inkPrimaryContainer : Theme.inkSurface
                         }
                         Column {
                             x: 18
@@ -84,7 +84,7 @@ StepPage {
                                 text: dcard.modelData.model
                                 role: Theme.titleS
                                 elide: Text.ElideRight
-                                color: dcard.chosen ? Theme.onPrimaryContainer : Theme.onSurface
+                                color: dcard.chosen ? Theme.inkPrimaryContainer : Theme.inkSurface
                             }
                             Txt {
                                 width: parent.width
@@ -94,7 +94,7 @@ StepPage {
                                 role: Theme.bodyS
                                 font.family: Theme.mono
                                 elide: Text.ElideRight
-                                color: Theme.onSurfaceVariant
+                                color: Theme.inkSurfaceVariant
                             }
                         }
                     }
@@ -109,7 +109,7 @@ StepPage {
                     anchors.centerIn: parent
                     spacing: 8
                     Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "hard_drive"; size: 32 }
-                    Txt { text: "No disks found. Plug one in and it shows up here."; role: Theme.bodyM; color: Theme.onSurfaceVariant }
+                    Txt { text: "No disks found. Plug one in and it shows up here."; role: Theme.bodyM; color: Theme.inkSurfaceVariant }
                 }
             }
 
@@ -127,7 +127,7 @@ StepPage {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Looking at what's on this disk"
                     role: Theme.bodyL
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                 }
             }
 
@@ -199,7 +199,7 @@ StepPage {
                                                 elide: Text.ElideRight
                                                 text: opt.modelData.label + "  " + page.app.gb(opt.modelData.partSize - page.app.fiordSize)
                                                 role: Theme.labelM
-                                                color: Theme.onSecondaryContainer
+                                                color: Theme.inkSecondaryContainer
                                             }
                                         }
                                         Rectangle {
@@ -214,7 +214,7 @@ StepPage {
                                                 elide: Text.ElideRight
                                                 text: "Fiordland  " + page.app.gb(page.app.fiordSize)
                                                 role: Theme.labelM
-                                                color: Theme.onPrimary
+                                                color: Theme.inkPrimary
                                             }
                                         }
                                     }
@@ -270,7 +270,7 @@ StepPage {
                                     wrapMode: Text.WordWrap
                                     text: "No partition of 16 GB or more. Make one in the partition editor."
                                     role: Theme.bodyM
-                                    color: Theme.onSurfaceVariant
+                                    color: Theme.inkSurfaceVariant
                                 }
                                 Txt {
                                     visible: page.app.backend.uefi
@@ -299,7 +299,7 @@ StepPage {
                                     wrapMode: Text.WordWrap
                                     text: "No EFI system partition. Make a 512 MB FAT32 partition with the boot and esp flags."
                                     role: Theme.bodyM
-                                    color: Theme.onSurfaceVariant
+                                    color: Theme.inkSurfaceVariant
                                 }
                                 Txt {
                                     visible: !page.app.backend.uefi && !!page.app.probe && page.app.probe.gpt && !page.app.probe.biosBoot
@@ -308,7 +308,7 @@ StepPage {
                                     wrapMode: Text.WordWrap
                                     text: "This disk needs a 1 MB partition with the bios_grub flag for GRUB. Make one in the partition editor."
                                     role: Theme.bodyM
-                                    color: Theme.onSurfaceVariant
+                                    color: Theme.inkSurfaceVariant
                                 }
                                 PillButton {
                                     x: 8
@@ -339,12 +339,12 @@ StepPage {
                         required property var modelData
                         spacing: 10
                         width: col.width
-                        Icon { name: "info"; size: 20; color: Theme.onSurfaceVariant }
+                        Icon { name: "info"; size: 20; color: Theme.inkSurfaceVariant }
                         Txt {
                             width: parent.width - 30
                             text: parent.modelData
                             role: Theme.bodyM
-                            color: Theme.onSurfaceVariant
+                            color: Theme.inkSurfaceVariant
                             wrapMode: Text.WordWrap
                             lineHeightMode: Text.ProportionalHeight
                             lineHeight: 1.1
@@ -378,7 +378,7 @@ StepPage {
                     width: parent.width - 30
                     text: "Btrfs with compression, zram swap, and automatic snapshots you can start from the boot menu."
                     role: Theme.bodyM
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                     wrapMode: Text.WordWrap
                 }
             }

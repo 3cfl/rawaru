@@ -36,7 +36,7 @@ Item {
         radius: d / 2
         x: cx - d / 2
         y: (sw.height - d) / 2
-        color: sw.checked ? Theme.onPrimary : Theme.outline
+        color: sw.checked ? Theme.inkPrimary : Theme.outline
         Behavior on x {
             enabled: Motion.animate
             SpringAnimation { spring: Motion.fastSpring; damping: Motion.fastDamping; epsilon: 0.1 }
@@ -54,7 +54,7 @@ Item {
             name: "check"
             size: 16
             weight: 600
-            color: Theme.onPrimaryContainer
+            color: Theme.inkPrimaryContainer
             opacity: sw.checked ? 1 : 0
             Behavior on opacity {
                 enabled: Motion.animate
@@ -69,7 +69,7 @@ Item {
         radius: 20
         x: thumb.cx - 20
         y: (sw.height - 40) / 2
-        color: sw.checked ? Theme.primary : Theme.onSurface
+        color: sw.checked ? Theme.primary : Theme.inkSurface
         opacity: mouse.pressed ? Motion.statePressed : mouse.containsMouse || sw.activeFocus ? Motion.stateHover : 0
     }
 

@@ -38,7 +38,7 @@ StepPage {
                 size: 48
                 weight: 600
                 fill: 1
-                color: page.failed ? Theme.onErrorContainer : Theme.onTertiaryContainer
+                color: page.failed ? Theme.inkErrorContainer : Theme.inkTertiaryContainer
             }
         }
 
@@ -57,7 +57,7 @@ StepPage {
             text: page.failed ? (page.app.errorText || "Something went wrong.")
                 : "Restart and remove the USB stick when the screen goes dark. Your new system will be waiting."
             role: Theme.bodyL
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
             wrapMode: Text.WordWrap
         }
 
@@ -108,7 +108,7 @@ StepPage {
                 contentHeight: detail.contentHeight
                 boundsBehavior: Flickable.StopAtBounds
                 C.ScrollBar.vertical: C.ScrollBar {
-                    policy: C.ScrollBar.AsNeeded
+                    policy: flick.contentHeight > flick.height + 1 ? C.ScrollBar.AlwaysOn : C.ScrollBar.AlwaysOff
                     contentItem: Rectangle { implicitWidth: 4; radius: 2; color: Theme.outline; opacity: 0.5 }
                 }
                 TextEdit {
@@ -118,7 +118,7 @@ StepPage {
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
                     text: page.app.errorDetail
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                     selectionColor: Theme.primaryContainer
                     font.family: Theme.mono
                     font.pixelSize: 12

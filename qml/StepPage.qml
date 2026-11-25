@@ -57,7 +57,7 @@ Item {
             width: parent.width
             text: page.subtitle
             role: Theme.bodyL
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
             wrapMode: Text.WordWrap
             visible: text !== ""
         }

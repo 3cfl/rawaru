@@ -5,14 +5,14 @@ Rectangle {
 
     property bool checked: false
     property color tint: Theme.primary
-    property color ink: Theme.onPrimary
+    property color ink: Theme.inkPrimary
 
     implicitWidth: 20
     implicitHeight: 20
     radius: checked ? 6 : 4
     color: checked ? tint : "transparent"
     border.width: checked ? 0 : 2
-    border.color: Theme.onSurfaceVariant
+    border.color: Theme.inkSurfaceVariant
 
     Behavior on radius {
         enabled: Motion.animate

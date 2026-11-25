@@ -59,11 +59,11 @@ Card {
             anchors.right: clear.visible ? clear.left : parent.right
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            color: Theme.onSurface
+            color: Theme.inkSurface
             font.family: Theme.font
             font.pixelSize: 15
             selectionColor: Theme.primary
-            selectedTextColor: Theme.onPrimary
+            selectedTextColor: Theme.inkPrimary
             clip: true
             onTextEdited: root.query = text
             Keys.onDownPressed: list.forceActiveFocus()
@@ -72,7 +72,7 @@ Card {
                 height: search.height
                 text: root.placeholder
                 role: Theme.bodyL
-                color: Theme.onSurfaceVariant
+                color: Theme.inkSurfaceVariant
             }
         }
         IconButton {
@@ -123,7 +123,7 @@ Card {
             Rectangle {
                 anchors.fill: parent
                 radius: row.selected ? 22 : Theme.md
-                color: row.selected ? Theme.secondaryContainer : Theme.alpha(Theme.onSurface, hover.containsMouse ? Motion.stateHover : 0)
+                color: row.selected ? Theme.secondaryContainer : Theme.alpha(Theme.inkSurface, hover.containsMouse ? Motion.stateHover : 0)
                 Behavior on radius {
                     enabled: Motion.animate
                     SpringAnimation { spring: Motion.fastSpring; damping: Motion.fastDamping; epsilon: 0.1 }
@@ -137,7 +137,7 @@ Card {
                 text: root.primaryOf(row.modelData)
                 role: Theme.bodyL
                 emphasized: row.selected
-                color: row.selected ? Theme.onSecondaryContainer : Theme.onSurface
+                color: row.selected ? Theme.inkSecondaryContainer : Theme.inkSurface
             }
             Txt {
                 id: sec
@@ -149,7 +149,7 @@ Card {
                 horizontalAlignment: Text.AlignRight
                 text: root.secondaryOf(row.modelData)
                 role: Theme.bodyS
-                color: row.selected ? Theme.onSecondaryContainer : Theme.onSurfaceVariant
+                color: row.selected ? Theme.inkSecondaryContainer : Theme.inkSurfaceVariant
             }
             Icon {
                 id: tick
@@ -160,7 +160,7 @@ Card {
                 name: "check"
                 size: 20
                 weight: 600
-                color: Theme.onSecondaryContainer
+                color: Theme.inkSecondaryContainer
             }
             MouseArea {
                 id: hover
@@ -175,7 +175,7 @@ Card {
             visible: list.count === 0
             text: "nothing matches"
             role: Theme.bodyM
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
         }
     }
 }

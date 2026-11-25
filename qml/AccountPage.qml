@@ -43,7 +43,7 @@ StepPage {
                         text: page.initial
                         role: Theme.displayS
                         emphasized: true
-                        color: Theme.onPrimaryContainer
+                        color: Theme.inkPrimaryContainer
                     }
                 }
                 Txt {
@@ -52,7 +52,7 @@ StepPage {
                     text: page.app.fullname.trim() || "Your name"
                     role: Theme.titleM
                     elide: Text.ElideRight
-                    color: page.app.fullname.trim() ? Theme.onSurface : Theme.onSurfaceVariant
+                    color: page.app.fullname.trim() ? Theme.inkSurface : Theme.inkSurfaceVariant
                 }
                 Txt {
                     width: parent.width
@@ -61,7 +61,7 @@ StepPage {
                     role: Theme.bodyS
                     font.family: Theme.mono
                     elide: Text.ElideMiddle
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                 }
             }
         }

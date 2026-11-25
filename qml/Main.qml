@@ -355,7 +355,7 @@ C.ApplicationWindow {
                         Rectangle {
                             anchors.fill: parent
                             radius: 28
-                            color: Theme.onSurface
+                            color: Theme.inkSurface
                             opacity: navMouse.containsMouse && nav.reachable ? Motion.stateHover : 0
                         }
                         Item {
@@ -377,14 +377,14 @@ C.ApplicationWindow {
                                     name: "check"
                                     size: 18
                                     weight: 600
-                                    color: Theme.onPrimary
+                                    color: Theme.inkPrimary
                                 }
                                 Txt {
                                     anchors.centerIn: parent
                                     visible: !nav.done
                                     text: nav.num
                                     role: Theme.labelM
-                                    color: Theme.onSurfaceVariant
+                                    color: Theme.inkSurfaceVariant
                                 }
                             }
                             Icon {
@@ -392,7 +392,7 @@ C.ApplicationWindow {
                                 visible: nav.current
                                 name: nav.modelData.icon
                                 fill: 1
-                                color: Theme.onSecondaryContainer
+                                color: Theme.inkSecondaryContainer
                             }
                         }
                         Txt {
@@ -401,7 +401,7 @@ C.ApplicationWindow {
                             text: nav.modelData.label
                             role: Theme.labelL
                             emphasized: nav.current
-                            color: nav.current ? Theme.onSecondaryContainer : (nav.done ? Theme.onSurface : Theme.onSurfaceVariant)
+                            color: nav.current ? Theme.inkSecondaryContainer : (nav.done ? Theme.inkSurface : Theme.inkSurfaceVariant)
                         }
                         MouseArea {
                             id: navMouse
@@ -495,7 +495,7 @@ C.ApplicationWindow {
                     visible: win.step === 2 && !win.canNext && win.disk !== "" && !win.probing
                     text: "Tick the box above to continue"
                     role: Theme.bodyM
-                    color: Theme.onSurfaceVariant
+                    color: Theme.inkSurfaceVariant
                 }
                 PillButton {
                     anchors.right: parent.right

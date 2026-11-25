@@ -43,7 +43,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: card.radius
-        color: Theme.onSurface
+        color: Theme.inkSurface
         opacity: !card.interactive || !card.enabled ? 0 : card.pressed ? Motion.statePressed : card.hovered ? Motion.stateHover : 0
         Behavior on opacity {
             enabled: Motion.animate

@@ -30,7 +30,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: parent.radius
-            color: Theme.onSurface
+            color: Theme.inkSurface
             opacity: hover.containsMouse && !input.activeFocus ? Motion.stateHover : 0
         }
 
@@ -40,7 +40,7 @@ Item {
             x: 14
             anchors.verticalCenter: parent.verticalCenter
             name: field.icon
-            color: field.error !== "" ? Theme.error : Theme.onSurfaceVariant
+            color: field.error !== "" ? Theme.error : Theme.inkSurfaceVariant
         }
 
         Txt {
@@ -49,7 +49,7 @@ Item {
             y: field.floated ? 7 : (box.height - height) / 2
             text: field.label
             role: field.floated ? Theme.bodyS : Theme.bodyL
-            color: field.error !== "" ? Theme.error : input.activeFocus ? Theme.primary : Theme.onSurfaceVariant
+            color: field.error !== "" ? Theme.error : input.activeFocus ? Theme.primary : Theme.inkSurfaceVariant
             Behavior on y {
                 enabled: Motion.animate
                 SpringAnimation { spring: Motion.fastSpring; damping: 0.6; epsilon: 0.1 }
@@ -61,11 +61,11 @@ Item {
             x: floating.x
             y: field.label !== "" ? 25 : (box.height - height) / 2
             width: box.width - x - (reveal.visible ? 52 : 16)
-            color: Theme.onSurface
+            color: Theme.inkSurface
             font.family: Theme.font
             font.pixelSize: 16
             selectionColor: Theme.primary
-            selectedTextColor: Theme.onPrimary
+            selectedTextColor: Theme.inkPrimary
             echoMode: field.password && !field.revealed ? TextInput.Password : TextInput.Normal
             passwordCharacter: "•"
             clip: true
@@ -75,7 +75,7 @@ Item {
                 text: field.placeholder
                 role: Theme.bodyL
                 height: input.height
-                color: Theme.alpha(Theme.onSurfaceVariant, 0.7)
+                color: Theme.alpha(Theme.inkSurfaceVariant, 0.7)
             }
         }
 
@@ -107,7 +107,7 @@ Item {
         width: parent.width - 32
         text: field.error !== "" ? field.error : field.supporting
         role: Theme.bodyS
-        color: field.error !== "" ? Theme.error : Theme.onSurfaceVariant
+        color: field.error !== "" ? Theme.error : Theme.inkSurfaceVariant
         wrapMode: Text.WordWrap
         lineHeightMode: Text.ProportionalHeight
         lineHeight: 1.0

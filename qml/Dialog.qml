@@ -70,7 +70,7 @@ C.Popup {
                     name: dialog.icon
                     size: 28
                     fill: 1
-                    color: dialog.danger ? Theme.onErrorContainer : Theme.onSecondaryContainer
+                    color: dialog.danger ? Theme.inkErrorContainer : Theme.inkSecondaryContainer
                 }
             }
         }
@@ -86,7 +86,7 @@ C.Popup {
             width: parent.width
             text: dialog.body
             role: Theme.bodyM
-            color: Theme.onSurfaceVariant
+            color: Theme.inkSurfaceVariant
             wrapMode: Text.WordWrap
             lineHeightMode: Text.ProportionalHeight
             lineHeight: 1.25

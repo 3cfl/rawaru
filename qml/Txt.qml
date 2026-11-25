@@ -4,7 +4,7 @@ Text {
     property var role: Theme.bodyM
     property bool emphasized: false
 
-    color: Theme.onSurface
+    color: Theme.inkSurface
     font.family: role.size >= 24 ? Theme.display : Theme.font
     font.pixelSize: role.size
     font.weight: Math.min(900, role.weight + (emphasized ? 200 : 0))

@@ -7,7 +7,7 @@ Item {
     property string icon
     property bool tonal: false
     property bool glass: false
-    property color tint: tonal ? Theme.onSecondaryContainer : Theme.onSurfaceVariant
+    property color tint: tonal ? Theme.inkSecondaryContainer : Theme.inkSurfaceVariant
 
     implicitHeight: 32
     implicitWidth: row.implicitWidth + (icon ? 24 : 32)
@@ -35,7 +35,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: chip.text
             role: Theme.labelL
-            color: chip.tonal || chip.glass ? Theme.onSurface : Theme.onSurfaceVariant
+            color: chip.tonal || chip.glass ? Theme.inkSurface : Theme.inkSurfaceVariant
         }
     }
 }
