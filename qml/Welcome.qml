@@ -29,21 +29,9 @@ Item {
         x: 40
         y: 32
         spacing: 12
-        ExpressiveShape {
-            width: 36
-            height: 36
-            lobes: 4
-            depth: 0.12
-            spin: 45
-            color: Theme.primary
+        Logo {
+            size: 36
             anchors.verticalCenter: parent.verticalCenter
-            Icon {
-                anchors.centerIn: parent
-                name: "landscape"
-                size: 20
-                fill: 1
-                color: Theme.inkPrimary
-            }
         }
         Txt {
             anchors.verticalCenter: parent.verticalCenter

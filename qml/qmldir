@@ -15,6 +15,7 @@ Icon 1.0 Icon.qml
 IconButton 1.0 IconButton.qml
 ListItem 1.0 ListItem.qml
 LoadingIndicator 1.0 LoadingIndicator.qml
+Logo 1.0 Logo.qml
 PillButton 1.0 PillButton.qml
 ProgressPage 1.0 ProgressPage.qml
 ProgressWavy 1.0 ProgressWavy.qml

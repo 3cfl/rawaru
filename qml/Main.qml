@@ -299,12 +299,8 @@ C.ApplicationWindow {
                 x: 24
                 y: 26
                 spacing: 10
-                ExpressiveShape {
-                    width: 28
-                    height: 28
-                    lobes: 6
-                    depth: 0.1
-                    color: Theme.primary
+                Logo {
+                    size: 30
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Txt {
