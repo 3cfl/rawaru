@@ -123,6 +123,10 @@ def main():
             print(f"{name}: {expr.error().toString()}", file=sys.stderr)
             failures += 1
             continue
+        waited = 0.0
+        while win.property("probing") and waited < 5:
+            pump(app, 0.1)
+            waited += 0.1
         pump(app, args.settle if keep else 0.8)
         if not keep:
             continue
