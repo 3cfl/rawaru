@@ -1,5 +1,33 @@
 singleton Theme 1.0 Theme.qml
-Glyph 1.0 Glyph.qml
-FButton 1.0 FButton.qml
-Field 1.0 Field.qml
-Chooser 1.0 Chooser.qml
+singleton Motion 1.0 Motion.qml
+AccountPage 1.0 AccountPage.qml
+Backdrop 1.0 Backdrop.qml
+Card 1.0 Card.qml
+CheckMark 1.0 CheckMark.qml
+Chip 1.0 Chip.qml
+DesktopPage 1.0 DesktopPage.qml
+Dialog 1.0 Dialog.qml
+DiskPage 1.0 DiskPage.qml
+DonePage 1.0 DonePage.qml
+Elevation 1.0 Elevation.qml
+ExpressiveShape 1.0 ExpressiveShape.qml
+Icon 1.0 Icon.qml
+IconButton 1.0 IconButton.qml
+ListItem 1.0 ListItem.qml
+LoadingIndicator 1.0 LoadingIndicator.qml
+Logo 1.0 Logo.qml
+PillButton 1.0 PillButton.qml
+ProgressPage 1.0 ProgressPage.qml
+ProgressWavy 1.0 ProgressWavy.qml
+RadioMark 1.0 RadioMark.qml
+RegionPage 1.0 RegionPage.qml
+RoundedBox 1.0 RoundedBox.qml
+SearchList 1.0 SearchList.qml
+Segmented 1.0 Segmented.qml
+Slider 1.0 Slider.qml
+StepPage 1.0 StepPage.qml
+SummaryPage 1.0 SummaryPage.qml
+Switch 1.0 Switch.qml
+TextField 1.0 TextField.qml
+Txt 1.0 Txt.qml
+Welcome 1.0 Welcome.qml

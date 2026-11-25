@@ -3,6 +3,8 @@ WAYLAND_WM = ["kitty", "thunar", "gvfs", "pavucontrol", "brightnessctl", "player
 X11_WM = ["xorg-server", "xorg-xinit", "xterm", "kitty", "thunar", "gvfs", "pavucontrol", "brightnessctl", "playerctl",
           "network-manager-applet", "polkit-gnome", "dmenu", "feh", "lightdm", "lightdm-gtk-greeter"]
 LIGHTDM = ["lightdm", "lightdm-gtk-greeter", "xorg-server"]
+LIGHT = {"xfce", "lxqt", "lxde", "mate", "openbox", "icewm", "fluxbox", "i3", "labwc", "sway"}
+LIGHT_DEFAULT = "xfce"
 
 DESKTOPS = [
     {"id": "plasma", "name": "KDE Plasma", "kind": "desktop", "recommended": True,
@@ -179,7 +181,7 @@ def catalogue():
     for d in DESKTOPS:
         out.append({
             "id": d["id"], "name": d["name"], "kind": d["kind"], "desc": d["desc"],
-            "recommended": d.get("recommended", False),
+            "recommended": d.get("recommended", False), "light": d["id"] in LIGHT,
             "shells": [{"id": s, "name": SHELLS[s]["name"], "by": SHELLS[s]["by"], "desc": SHELLS[s]["desc"],
                         "script": "script" in SHELLS[s]} for s in d.get("shells", [])],
         })
