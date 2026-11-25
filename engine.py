@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 
+import checks
 import desktops
 import disks
 
@@ -39,7 +40,10 @@ FIORD_REPO = "[fiordland]\nSigLevel = Required\nServer = https://fiordlandlinux.
 CACHY_REPO = "\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n"
 CACHY_PKGS = ["cachyos-keyring", "cachyos-mirrorlist"]
 GAMING = ["fiordland-gaming"]
-KERNEL = {"cachy": True, "repo": True}
+KERNEL_PKGS = {"cachyos": ["linux-cachyos"], "fiord": ["linux-fiord"], "arch": []}
+KERNEL = {"name": "cachyos", "repo": True}
+GREETER = {"name": ""}
+CREST_GREETER = ["crest-greeter"]
 ESP_MNT = "/efi"
 MODE = {"alongside": False}
 STABLE_SERVER = "https://fiordlandlinux.org/stable/$repo/os/$arch"
@@ -129,13 +133,91 @@ def write(path, text, mode=0o644):
     if DRY:
         return
     os.makedirs(os.path.dirname(full), exist_ok=True)
-    with open(full, "w") as f:
+    fd = os.open(full, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, "w") as f:
+        os.fchmod(f.fileno(), mode)
         f.write(text)
-    os.chmod(full, mode)
 
 
 def part_name(disk, n):
-    return f"{disk}p{n}" if re.search(r"\d$", disk) else f"{disk}{n}"
+    return checks.partition_name(disk, n)
+
+
+def erase_cmds(disk, uefi):
+    if uefi:
+        first = ["-n1:0:+512M", "-t1:ef00", "-c1:EFI"]
+    else:
+        first = ["-n1:0:+1M", "-t1:ef02", "-c1:BIOS"]
+    return [
+        ["wipefs", "-af", disk],
+        ["sgdisk", "--zap-all", disk],
+        ["sgdisk", *first, "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk],
+    ]
+
+
+def useradd_cmd(user, full):
+    if checks.username_error(user) or checks.fullname_error(full):
+        raise ValueError("bad account details")
+    return ["useradd", "-m", "-G", "wheel,video,input,audio", "-s", "/bin/bash", "-c", full, "--", user]
+
+
+def chpasswd_input(user, password):
+    if checks.username_error(user) or checks.password_error(password):
+        raise ValueError("bad account details")
+    return f"{user}:{password}\n"
+
+
+def kernel_packages(kernel, gpu_pkgs):
+    pkgs = list(KERNEL_PKGS.get(kernel, []))
+    gpu = list(gpu_pkgs)
+    if kernel != "cachyos":
+        gpu = [p for p in gpu if not p.startswith("linux-cachyos")]
+    if kernel == "fiord" and "nvidia-open" in gpu:
+        gpu = ["nvidia-open-dkms" if p == "nvidia-open" else p for p in gpu]
+        pkgs += ["linux-fiord-headers", "linux-headers"]
+    return pkgs, gpu
+
+
+def build_packages(cfg, vendor, uefi, gpu_pkgs, guest_pkgs):
+    pkgs = list(PACKAGES)
+    pkgs += [p for p in desktops.packages(cfg["desktop"], cfg["shell"]) if p not in pkgs]
+    if vendor:
+        pkgs.append(f"{vendor}-ucode")
+    if uefi:
+        pkgs.append("efibootmgr")
+    kpkgs, gpu = kernel_packages(cfg["kernel"], gpu_pkgs)
+    if cfg.get("lowend"):
+        gpu = [p for p in gpu if not p.startswith("lib32-")]
+    pkgs += gpu + list(guest_pkgs) + CACHY_PKGS
+    if not cfg.get("lowend"):
+        pkgs += GAMING
+    pkgs += kpkgs
+    if cfg.get("greeter") == "crest":
+        pkgs += CREST_GREETER
+    seen = set()
+    return [p for p in pkgs if not (p in seen or seen.add(p))]
+
+
+def fallback_packages(pkgs):
+    drop = set(CACHY_PKGS + GAMING + CREST_GREETER + ["linux-fiord-headers", "linux-headers"])
+    out = []
+    for p in pkgs:
+        if p in drop or p.startswith(("linux-cachyos", "linux-fiord")):
+            continue
+        out.append("nvidia-open" if p == "nvidia-open-dkms" else p)
+    return out
+
+
+def greetd_config(cmd, user, autologin, greeter=""):
+    if greeter == "crest":
+        session = 'command = "crest-greeter"\n'
+    else:
+        session = (f'command = "tuigreet --time --remember --remember-session --asterisks '
+                   f'--greeting \'Welcome to Fiordland\' --cmd {cmd}"\n')
+    text = "[terminal]\nvt = 1\n\n[default_session]\n" + session + 'user = "greeter"\n'
+    if autologin:
+        text += f'\n[initial_session]\ncommand = "{cmd}"\nuser = "{user}"\n'
+    return text
 
 
 def is_uefi():
@@ -269,16 +351,20 @@ def settle(disk):
     run(["udevadm", "settle"], check=False)
 
 
+def confirm_parts(disk, parts):
+    if DRY:
+        return
+    for part in parts:
+        checks.check_partition(disk, part)
+
+
 def erase(disk, uefi):
     status("Preparing your disk", 0.01)
-    run(["wipefs", "-af", disk])
-    run(["sgdisk", "--zap-all", disk])
-    if uefi:
-        run(["sgdisk", "-n1:0:+512M", "-t1:ef00", "-c1:EFI", "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk])
-    else:
-        run(["sgdisk", "-n1:0:+1M", "-t1:ef02", "-c1:BIOS", "-n2:0:0", "-t2:8304", "-c2:Fiordland", disk])
+    for cmd in erase_cmds(disk, uefi):
+        run(cmd)
     settle(disk)
     esp, root = part_name(disk, 1), part_name(disk, 2)
+    confirm_parts(disk, [esp, root])
     if uefi:
         status("Formatting", 0.03)
         run(["mkfs.fat", "-F32", "-n", "EFI", esp])
@@ -326,6 +412,7 @@ def alongside(cfg):
     new = sorted(set(disks.snapshot(disk)) - old)
     if len(new) != 1:
         raise RuntimeError("Could not find the new partition")
+    confirm_parts(disk, [info["esp"], new[0]])
     return info["esp"], new[0]
 
 
@@ -346,6 +433,7 @@ def manual(cfg, uefi):
             raise RuntimeError("Choose a FAT32 EFI system partition for the boot files")
     elif info["gpt"] and not info["biosBoot"]:
         raise RuntimeError("This GPT disk needs a 1 MB BIOS boot partition for GRUB. Create one in the partition editor")
+    confirm_parts(disk, [root] + ([esp] if uefi else []))
     run(["wipefs", "-af", root])
     if info["gpt"]:
         num = re.search(r"(\d+)$", root).group(1)
@@ -420,6 +508,13 @@ def pin_arch_repos(conf, line):
     return "\n".join(out) + "\n"
 
 
+def pacstrap_cmd(conf, pkgs):
+    bad = [p for p in pkgs if not re.fullmatch(r"[a-z0-9@_+][a-z0-9@._+-]*", p)]
+    if bad:
+        raise ValueError(f"bad package name {bad[0]!r}")
+    return ["pacstrap", "-K", "-C", conf, MNT, "--noconfirm", "--needed", *pkgs]
+
+
 def pacstrap(pkgs):
     status("Downloading packages", 0.05)
     if not DRY and not os.path.ismount(MNT):
@@ -438,37 +533,42 @@ def pacstrap(pkgs):
         run(["timeout", "50", "systemctl", "start", "fiordland-mirrors.service"], check=False)
     status("Downloading packages", 0.06)
     conf = pacman_conf()
-    cmd = ["pacstrap", "-K", "-C", conf, MNT, *pkgs, "--noconfirm", "--needed"]
-    log("$ " + " ".join(cmd))
-    env = dict(os.environ, LC_ALL="C")
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
-    total = None
-    dl = inst = 0
-    tail = []
-    re_total = re.compile(r"^Packages \((\d+)\)")
-    re_inst = re.compile(r"^\(\s*(\d+)/(\d+)\) installing (\S+)")
-    for raw in p.stdout:
-        line = raw.rstrip()
-        if not line:
-            continue
-        log(line)
-        tail = (tail + [line])[-TAIL:]
-        m = re_total.match(line)
-        if m:
-            total = int(m.group(1))
-            continue
-        m = re_inst.match(line)
-        if m:
-            inst, total = int(m.group(1)), int(m.group(2))
-            status(f"Installing {m.group(3)}", 0.45 + 0.37 * inst / total)
-            continue
-        s = line.strip()
-        if total and s.endswith("downloading...") and inst == 0:
-            dl += 1
-            name = s.split()[0]
-            status(f"Downloading {name}", 0.08 + 0.37 * min(dl, total) / total)
-    p.wait()
-    os.unlink(conf)
+    try:
+        cmd = pacstrap_cmd(conf, pkgs)
+        log("$ " + " ".join(cmd))
+        env = dict(os.environ, LC_ALL="C")
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
+        total = None
+        dl = inst = 0
+        tail = []
+        re_total = re.compile(r"^Packages \((\d+)\)")
+        re_inst = re.compile(r"^\(\s*(\d+)/(\d+)\) installing (\S+)")
+        for raw in p.stdout:
+            line = raw.rstrip()
+            if not line:
+                continue
+            log(line)
+            tail = (tail + [line])[-TAIL:]
+            m = re_total.match(line)
+            if m:
+                total = int(m.group(1))
+                continue
+            m = re_inst.match(line)
+            if m:
+                inst, total = int(m.group(1)), int(m.group(2))
+                status(f"Installing {m.group(3)}", 0.45 + 0.37 * inst / total)
+                continue
+            s = line.strip()
+            if total and s.endswith("downloading...") and inst == 0:
+                dl += 1
+                name = s.split()[0]
+                status(f"Downloading {name}", 0.08 + 0.37 * min(dl, total) / total)
+        p.wait()
+    finally:
+        try:
+            os.unlink(conf)
+        except OSError:
+            pass
     if p.returncode != 0:
         raise CommandFailed(f"pacstrap failed ({p.returncode})", tail)
 
@@ -498,6 +598,9 @@ def configure(cfg, root, uefi):
         chroot("pacman-key", "--populate", "cachyos", check=False)
     set_channel()
     tz = cfg.get("timezone") or "UTC"
+    if checks.timezone_error(tz) or (not DRY and not os.path.isfile(f"{MNT}/usr/share/zoneinfo/{tz}")):
+        log(f"unknown time zone {tz!r}, using UTC")
+        tz = "UTC"
     chroot("ln", "-sf", f"/usr/share/zoneinfo/{tz}", "/etc/localtime")
     chroot("hwclock", "--systohc", check=False)
     locale = cfg.get("locale") or "en_US.UTF-8"
@@ -520,8 +623,9 @@ def configure(cfg, root, uefi):
     if not DRY:
         with open(MNT + "/etc/skel/.bashrc", "a") as f:
             f.write("\n[[ -r /usr/share/fiordland/bashrc ]] && . /usr/share/fiordland/bashrc\n")
-    chroot("useradd", "-m", "-G", "wheel,video,input,audio", "-s", "/bin/bash", "-c", full, user)
-    chroot("chpasswd", inp=f"{user}:{cfg['password']}\n")
+    chroot(*useradd_cmd(user, full))
+    chroot("chpasswd", inp=chpasswd_input(user, cfg["password"]))
+    cfg["password"] = ""
     log(f"set password for {user}")
     chroot("passwd", "-l", "root")
     write("/etc/sudoers.d/10-wheel", "%wheel ALL=(ALL:ALL) ALL\n", 0o440)
@@ -583,12 +687,13 @@ def bootloader(cfg, root, uefi):
         if "GRUB_DISABLE_OS_PROBER=false" not in g:
             g += "\nGRUB_DISABLE_OS_PROBER=false\n"
         g += "\nGRUB_DISABLE_BOOTNEXT=true\n"
-        if KERNEL["cachy"]:
-            g += '\nGRUB_TOP_LEVEL="/boot/vmlinuz-linux-cachyos"\n'
+        top = KERNEL_PKGS.get(KERNEL["name"])
+        if top:
+            g += f'\nGRUB_TOP_LEVEL="/boot/vmlinuz-{top[0]}"\n'
         with open(f"{MNT}/etc/default/grub", "w") as f:
             f.write(g)
     write("/etc/grub.d/11_fiordland_safe",
-          "#!/bin/sh\nexec tail -n +3 $0\n"
+          '#!/bin/sh\nexec tail -n +3 "$0"\n'
           "menuentry 'Fiordland Linux (safe graphics)' --class fiordland --class gnu-linux {\n"
           f"    search --no-floppy --fs-uuid --set=root {uuid}\n"
           f"    linux /@/boot/vmlinuz-linux root=UUID={uuid} rootflags=subvol=@ rw nomodeset\n"
@@ -645,15 +750,11 @@ def login_manager(d, user, autologin):
                   "[greeter]\nbackground=/usr/share/fiordland/wallpaper.png\ntheme-name=Adwaita-dark\n"
                   "icon-theme-name=Fiordland\nfont-name=Inter 11\n")
         return "lightdm"
-    cmd = d["cmd"]
-    greet = (
-        "[terminal]\nvt = 1\n\n[default_session]\n"
-        f'command = "tuigreet --time --remember --remember-session --asterisks --greeting \'Welcome to Fiordland\' --cmd {cmd}"\n'
-        'user = "greeter"\n'
-    )
-    if autologin:
-        greet += f'\n[initial_session]\ncommand = "{cmd}"\nuser = "{user}"\n'
-    write("/etc/greetd/config.toml", greet)
+    greeter = GREETER["name"]
+    if greeter == "crest" and not DRY and not os.path.exists(MNT + "/usr/bin/crest-greeter"):
+        log("crest-greeter is not installed, using tuigreet")
+        greeter = ""
+    write("/etc/greetd/config.toml", greetd_config(d["cmd"], user, autologin, greeter))
     return "greetd"
 
 
@@ -786,54 +887,63 @@ def finish():
     release_mnt()
 
 
+def read_config(arg, stdin=None):
+    if arg == "-":
+        text = (stdin or sys.stdin).read(1 << 20)
+    else:
+        with open(arg) as f:
+            text = f.read(1 << 20)
+        try:
+            os.unlink(arg)
+        except OSError:
+            pass
+    return checks.validate_config(json.loads(text))
+
+
 def main():
     global DRY
     args = sys.argv[1:]
     DRY = "--dry-run" in args
     args = [a for a in args if a != "--dry-run"]
     if len(args) == 2 and args[0] == "--probe":
+        err = checks.disk_error(args[1])
+        if err:
+            print(err, file=sys.stderr)
+            sys.exit(2)
         print(json.dumps(disks.probe(args[1])))
         return
-    if not args:
-        print("usage: engine.py [--dry-run] config.json | --probe DISK", file=sys.stderr)
+    if len(args) != 1:
+        print("usage: engine.py [--dry-run] config.json|- | --probe DISK", file=sys.stderr)
         sys.exit(2)
-    with open(args[0]) as f:
-        cfg = json.load(f)
     try:
-        os.unlink(args[0])
-    except OSError:
-        pass
+        cfg = read_config(args[0])
+        if not DRY:
+            checks.check_target(cfg["disk"], cfg["disk_size"])
+    except (OSError, ValueError) as e:
+        emit(error=str(e) or "The install settings are not valid", detail="")
+        sys.exit(1)
     try:
         root, uefi = partition(cfg)
-        pkgs = list(PACKAGES)
-        pkgs += [p for p in desktops.packages(cfg.get("desktop", "plasma"), cfg.get("shell")) if p not in pkgs]
-        vendor = cpu_vendor()
-        if vendor:
-            pkgs.append(f"{vendor}-ucode")
-        if is_uefi():
-            pkgs.append("efibootmgr")
-        KERNEL["cachy"] = cfg.get("kernel", "cachyos") == "cachyos"
-        CHANNEL["name"] = cfg.get("channel") or default_channel()
-        CHANNEL["server"] = cfg.get("stable_server") or STABLE_SERVER
-        log(f"channel {CHANNEL['name']}")
+        KERNEL["name"] = cfg["kernel"]
+        GREETER["name"] = cfg["greeter"]
+        CHANNEL["name"] = cfg["channel"] or default_channel()
+        CHANNEL["server"] = cfg["stable_server"] or STABLE_SERVER
+        log(f"channel {CHANNEL['name']}, kernel {KERNEL['name']}" + (", low-end defaults" if cfg["lowend"] else ""))
         GPU.update(gpu_setup(gpus()))
-        pkgs += GPU["pkgs"]
         SERVICES.extend(GPU["services"])
         gpkgs, gsvcs = guest_tools()
-        pkgs += gpkgs
         SERVICES.extend(gsvcs)
-        pkgs += CACHY_PKGS + GAMING
-        if KERNEL["cachy"]:
-            pkgs.append("linux-cachyos")
+        pkgs = build_packages(cfg, cpu_vendor(), is_uefi(), GPU["pkgs"], gpkgs)
         try:
             pacstrap(pkgs)
         except RuntimeError:
             if not KERNEL["repo"]:
                 raise
-            log("CachyOS packages unavailable, falling back to the Arch kernel")
-            KERNEL["cachy"] = KERNEL["repo"] = False
-            drop = set(CACHY_PKGS + GAMING)
-            pacstrap([p for p in pkgs if p not in drop and not p.startswith("linux-cachyos")])
+            log("Optional packages unavailable, falling back to the Arch kernel")
+            KERNEL["name"] = "arch"
+            KERNEL["repo"] = False
+            GREETER["name"] = ""
+            pacstrap(fallback_packages(pkgs))
         configure(cfg, root, uefi)
         finish()
         emit(progress=1.0, status="Fiordland is installed", done=True)
