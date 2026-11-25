@@ -233,6 +233,11 @@ class Backend(QObject):
         return self._low_end
 
     @Property(int, constant=True)
+    def lowEndForced(self):
+        forced = os.environ.get("RAWARU_LOW_END", "")
+        return int(forced) if forced in ("0", "1") else -1
+
+    @Property(int, constant=True)
     def ramGb(self):
         return round(ram_kb() / 1024 / 1024)
 
@@ -348,16 +353,17 @@ class Backend(QObject):
         def work():
             if self._dry:
                 time.sleep(0.6)
-                res = {"disk": disk, "uefi": True, "gpt": True, "esp": disk + "1", "system": "Windows", "notes": [],
-                       "options": [{"kind": "shrink", "part": disk + "3", "label": "Windows", "max": 180 * 1000**3,
+                part = lambda n: checks.partition_name(disk, n)
+                res = {"disk": disk, "uefi": True, "gpt": True, "esp": part(1), "system": "Windows", "notes": [],
+                       "options": [{"kind": "shrink", "part": part(3), "label": "Windows", "max": 180 * 1000**3,
                                     "min": 20 * 1000**3, "partSize": 240 * 1000**3}],
-                       "parts": [{"node": disk + "1", "size": 100 * 1000**2, "fs": "vfat", "label": "EFI", "esp": True,
+                       "parts": [{"node": part(1), "size": 100 * 1000**2, "fs": "vfat", "label": "EFI", "esp": True,
                                   "biosBoot": False, "usable": False},
-                                 {"node": disk + "2", "size": 16 * 1000**2, "fs": "", "label": "", "esp": False,
+                                 {"node": part(2), "size": 16 * 1000**2, "fs": "", "label": "", "esp": False,
                                   "biosBoot": False, "usable": False},
-                                 {"node": disk + "3", "size": 240 * 1000**3, "fs": "ntfs", "label": "Windows",
+                                 {"node": part(3), "size": 240 * 1000**3, "fs": "ntfs", "label": "Windows",
                                   "esp": False, "biosBoot": False, "usable": True},
-                                 {"node": disk + "4", "size": 60 * 1000**3, "fs": "ext4", "label": "data",
+                                 {"node": part(4), "size": 60 * 1000**3, "fs": "ext4", "label": "data",
                                   "esp": False, "biosBoot": False, "usable": True}]}
             else:
                 try:
