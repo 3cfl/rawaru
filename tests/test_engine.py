@@ -163,3 +163,29 @@ def test_dry_install_never_prints_the_password(monkeypatch, capsys):
     assert "Zebra-Unique-77" not in out
     assert json.loads(out.splitlines()[-1])["done"] is True
     assert "useradd" in out
+
+
+@pytest.mark.parametrize("wm,path", [
+    ("sway", ".config/sway/config"), ("labwc", ".config/labwc/autostart"), ("i3", ".config/i3/config"),
+    ("bspwm", ".config/bspwm/bspwmrc"), ("openbox", ".config/openbox/autostart"),
+])
+def test_window_managers_start_the_update_checker(monkeypatch, wm, path):
+    files = {}
+    monkeypatch.setattr(engine, "write", lambda p, text, mode=0o644: files.__setitem__(p, text))
+    monkeypatch.setattr(engine, "chroot", lambda *a, **k: None)
+    monkeypatch.setattr(engine, "login_manager", lambda d, user, autologin: "greetd")
+    monkeypatch.setattr(engine, "from_system", lambda p: "")
+    monkeypatch.setattr(engine, "SERVICES", [])
+    engine.desktop({"desktop": wm, "shell": ""}, "kiri", "us")
+    assert files[f"/home/kiri/{path}"].count("kuaka --tray") == 1
+
+
+def test_niri_leaves_the_update_checker_to_xdg_autostart(monkeypatch):
+    files = {}
+    monkeypatch.setattr(engine, "write", lambda p, text, mode=0o644: files.__setitem__(p, text))
+    monkeypatch.setattr(engine, "chroot", lambda *a, **k: None)
+    monkeypatch.setattr(engine, "login_manager", lambda d, user, autologin: "greetd")
+    monkeypatch.setattr(engine, "from_system", lambda p: "")
+    monkeypatch.setattr(engine, "SERVICES", [])
+    engine.desktop({"desktop": "niri", "shell": ""}, "kiri", "us")
+    assert "kuaka" not in files["/home/kiri/.config/niri/config.kdl"]
