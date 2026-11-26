@@ -45,6 +45,7 @@ KERNEL = {"name": "cachyos", "repo": True}
 GREETER = {"name": ""}
 CREST_GREETER = ["crest-greeter"]
 ESP_MNT = "/efi"
+KERERU = "test -x /usr/bin/kereru && kereru --autostart"
 MODE = {"alongside": False}
 STABLE_SERVER = "https://fiordlandlinux.org/stable/$repo/os/$arch"
 CHANNEL = {"name": "rolling", "server": STABLE_SERVER}
@@ -800,20 +801,20 @@ def desktop(cfg, user, keymap):
         if run_cmd:
             conf = re.sub(r"(?ms)^bar \{.*?^\}\n", "", conf)
             conf = conf.replace("\ninclude ", f"\nexec {run_cmd}\n\ninclude ", 1)
-        conf += f"\ninput type:keyboard xkb_layout {keymap}\nexec kuaka --tray\n"
+        conf += f"\ninput type:keyboard xkb_layout {keymap}\nexec kuaka --tray\nexec {KERERU}\n"
         home(user, ".config/sway/config", conf)
     elif did == "labwc":
-        auto = [f"swaybg -m fill -i {wall} &", "nm-applet --indicator &", "kuaka --tray &"]
+        auto = [f"swaybg -m fill -i {wall} &", "nm-applet --indicator &", "kuaka --tray &", f"{KERERU} &"]
         auto += [f"{run_cmd} &"] if run_cmd else ["waybar &", "mako &"]
         home(user, ".config/labwc/autostart", "\n".join(auto) + "\n")
         home(user, ".config/labwc/environment", f"XKB_DEFAULT_LAYOUT={keymap}\n")
     elif did == "i3":
         conf = from_system("/etc/i3/config")
-        conf += f"\nexec --no-startup-id feh --no-fehbg --bg-fill {wall}\nexec --no-startup-id kuaka --tray\n"
+        conf += f"\nexec --no-startup-id feh --no-fehbg --bg-fill {wall}\nexec --no-startup-id kuaka --tray\nexec --no-startup-id {KERERU}\n"
         home(user, ".config/i3/config", conf)
     elif did == "bspwm":
         rc = from_system("/usr/share/doc/bspwm/examples/bspwmrc")
-        rc += f"\nfeh --no-fehbg --bg-fill {wall} &\nnm-applet &\nkuaka --tray &\n"
+        rc += f"\nfeh --no-fehbg --bg-fill {wall} &\nnm-applet &\nkuaka --tray &\n{KERERU} &\n"
         home(user, ".config/bspwm/bspwmrc", rc, 0o755)
         keys = from_system("/usr/share/doc/bspwm/examples/sxhkdrc").replace("urxvt", "kitty")
         home(user, ".config/sxhkd/sxhkdrc", keys)
@@ -821,7 +822,7 @@ def desktop(cfg, user, keymap):
         rc = from_system("/etc/xdg/awesome/rc.lua").replace('terminal = "xterm"', 'terminal = "kitty"')
         home(user, ".config/awesome/rc.lua", rc)
     elif did == "openbox":
-        home(user, ".config/openbox/autostart", f"feh --no-fehbg --bg-fill {wall} &\ntint2 &\nnm-applet &\nkuaka --tray &\n")
+        home(user, ".config/openbox/autostart", f"feh --no-fehbg --bg-fill {wall} &\ntint2 &\nnm-applet &\nkuaka --tray &\n{KERERU} &\n")
 
     if d["kind"] == "wm":
         env = from_system("/etc/environment")
