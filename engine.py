@@ -482,6 +482,8 @@ def pacman_conf():
     repo = f"[fiordland]\nSigLevel = Required\nServer = file://{LOCAL_REPO}\n\n"
     base = base.replace("[core]", repo + "[core]", 1)
     base = re.sub(r"(?m)^#?ParallelDownloads.*$", "ParallelDownloads = 10", base)
+    if not re.search(r"(?m)^DisableDownloadTimeout", base):
+        base = base.replace("[options]", "[options]\nDisableDownloadTimeout", 1)
     base = re.sub(r"(?m)^#\[multilib\]\n#Include", "[multilib]\nInclude", base)
     base = re.sub(r"(?ms)^\[cachyos\].*?(?=^\[|\Z)", "", base)
     if CHANNEL["name"] == "stable":
@@ -516,7 +518,30 @@ def pacstrap_cmd(conf, pkgs):
     return ["pacstrap", "-K", "-C", conf, MNT, "--noconfirm", "--needed", *pkgs]
 
 
-def pacstrap(pkgs):
+NET_ERRORS = ("failed retrieving file", "download library error", "failed to synchronize", "Operation too slow",
+              "Could not resolve host", "Connection timed out", "Failed to connect")
+
+
+def net_failure(e):
+    return any(m in l for l in getattr(e, "tail", []) for m in NET_ERRORS)
+
+
+def pacstrap(pkgs, tries=3):
+    for n in range(1, tries + 1):
+        try:
+            return pacstrap_once(pkgs)
+        except CommandFailed as e:
+            if not net_failure(e):
+                raise
+            if n == tries:
+                raise CommandFailed("Couldn't download packages. Check your internet connection and try again.", e.tail)
+            log(f"download problem, retrying ({n}/{tries - 1})")
+            status("Connection is slow, retrying", 0.06)
+            if not DRY:
+                time.sleep(5 * n)
+
+
+def pacstrap_once(pkgs):
     status("Downloading packages", 0.05)
     if not DRY and not os.path.ismount(MNT):
         raise RuntimeError(f"{MNT} is not mounted, refusing to install into the live system")
@@ -937,8 +962,8 @@ def main():
         pkgs = build_packages(cfg, cpu_vendor(), is_uefi(), GPU["pkgs"], gpkgs)
         try:
             pacstrap(pkgs)
-        except RuntimeError:
-            if not KERNEL["repo"]:
+        except RuntimeError as e:
+            if not KERNEL["repo"] or net_failure(e):
                 raise
             log("Optional packages unavailable, falling back to the Arch kernel")
             KERNEL["name"] = "arch"

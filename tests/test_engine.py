@@ -218,3 +218,55 @@ def test_niri_leaves_live_wallpapers_to_xdg_autostart(monkeypatch):
     monkeypatch.setattr(engine, "SERVICES", [])
     engine.desktop({"desktop": "niri", "shell": ""}, "kiri", "us")
     assert "kereru" not in files["/home/kiri/.config/niri/config.kdl"]
+
+
+def test_pacstrap_retries_network_errors(monkeypatch):
+    tries = []
+
+    def once(pkgs):
+        tries.append(pkgs)
+        if len(tries) < 3:
+            raise engine.CommandFailed("pacstrap failed (1)", ["error: failed retrieving file 'core.db'"])
+
+    monkeypatch.setattr(engine, "pacstrap_once", once)
+    monkeypatch.setattr(engine.time, "sleep", lambda s: None)
+    engine.pacstrap(["base"])
+    assert len(tries) == 3
+
+
+def test_pacstrap_gives_clear_error_when_offline(monkeypatch):
+    def once(pkgs):
+        raise engine.CommandFailed("pacstrap failed (1)", ["error: failed to synchronize all databases"])
+
+    monkeypatch.setattr(engine, "pacstrap_once", once)
+    monkeypatch.setattr(engine.time, "sleep", lambda s: None)
+    with pytest.raises(engine.CommandFailed, match="internet connection") as e:
+        engine.pacstrap(["base"])
+    assert engine.net_failure(e.value)
+
+
+def test_pacstrap_does_not_retry_other_errors(monkeypatch):
+    tries = []
+
+    def once(pkgs):
+        tries.append(pkgs)
+        raise engine.CommandFailed("pacstrap failed (1)", ["error: target not found: linux-fiord"])
+
+    monkeypatch.setattr(engine, "pacstrap_once", once)
+    with pytest.raises(engine.CommandFailed, match="pacstrap failed"):
+        engine.pacstrap(["linux-fiord"])
+    assert len(tries) == 1
+
+
+def test_pacman_conf_disables_download_timeout(monkeypatch, tmp_path):
+    src = tmp_path / "pacman.conf"
+    src.write_text("[options]\n#ParallelDownloads = 5\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n")
+    real_open = open
+    monkeypatch.setattr("builtins.open", lambda f, *a, **k: real_open(src if f == "/etc/pacman.conf" else f, *a, **k))
+    path = engine.pacman_conf()
+    try:
+        text = real_open(path).read()
+    finally:
+        import os
+        os.unlink(path)
+    assert "[options]\nDisableDownloadTimeout\n" in text
