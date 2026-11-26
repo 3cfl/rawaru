@@ -233,19 +233,30 @@ def nmcli(args, timeout=30, root=False):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
-def online_now():
-    try:
-        if nmcli(["-t", "-f", "CONNECTIVITY", "general"], 8).stdout.strip() == "full":
-            return True
-    except (OSError, subprocess.SubprocessError):
-        pass
-    for host in ("fiordlandlinux.org", "archlinux.org"):
+def reach(hosts=("fiordlandlinux.org", "archlinux.org"), secs=6):
+    hit = threading.Event()
+
+    def probe(host):
         try:
             socket.create_connection((host, 443), 4).close()
-            return True
+            hit.set()
         except OSError:
             pass
-    return False
+    for h in hosts:
+        threading.Thread(target=probe, args=(h,), daemon=True).start()
+    return hit.wait(secs)
+
+
+def online_now():
+    try:
+        state = nmcli(["-t", "-f", "CONNECTIVITY", "general"], 8).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        state = ""
+    if state == "full":
+        return True
+    if state == "none":
+        return False
+    return reach()
 
 
 def has_wifi():
@@ -255,11 +266,20 @@ def has_wifi():
         return False
 
 
+def wifi_device(text):
+    devs = [split_terse(l) for l in text.splitlines()]
+    devs = [d for d in devs if len(d) >= 3 and d[1] == "wifi"]
+    for d in devs:
+        if d[2] == "disconnected":
+            return d[0]
+    return devs[0][0] if devs else ""
+
+
 def wifi_error(text):
     t = text.lower()
     if "secrets were required" in t or "802-1x" in t or "password" in t or "psk" in t:
         return "Wrong password, try again"
-    if "no network with ssid" in t:
+    if "no network with ssid" in t or "could not be found" in t:
         return "That network is out of range, rescan and try again"
     if "not authorized" in t or "permission" in t:
         return "Not allowed to change the network"
@@ -405,6 +425,9 @@ class Backend(QObject):
                     args = ["--wait", "30", "device", "wifi", "connect", ssid]
                     if password:
                         args += ["password", password]
+                    dev = wifi_device(nmcli(["-t", "-f", "DEVICE,TYPE,STATE", "device"], 8).stdout)
+                    if dev:
+                        args += ["ifname", dev]
                     r = nmcli(args, 60, root=True)
                     ok = r.returncode == 0
                     if not ok:
@@ -413,7 +436,8 @@ class Backend(QObject):
                 except (OSError, subprocess.SubprocessError):
                     msg = "Couldn't connect, try again"
                 if ok:
-                    for _ in range(10):
+                    end = time.monotonic() + 15
+                    while time.monotonic() < end:
                         if online_now():
                             self._online = True
                             break

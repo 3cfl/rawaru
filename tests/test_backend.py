@@ -178,3 +178,28 @@ def test_dry_run_fake_offline(monkeypatch):
     monkeypatch.setenv("RAWARU_FAKE_OFFLINE", "1")
     b = backend.Backend(dry_run=True)
     assert not b.online
+
+
+def test_wifi_device_prefers_idle_card():
+    text = "enp0s1:ethernet:connected\nwlan1:wifi:connected\nwlan0:wifi:disconnected\np2p-dev-wlan0:wifi-p2p:disconnected"
+    assert backend.wifi_device(text) == "wlan0"
+    assert backend.wifi_device("wlan1:wifi:connected") == "wlan1"
+    assert backend.wifi_device("enp0s1:ethernet:connected") == ""
+
+
+def test_online_now_trusts_networkmanager(monkeypatch):
+    calls = []
+    monkeypatch.setattr(backend, "reach", lambda *a, **k: calls.append(1) or True)
+    for state, want, probed in (("full", True, 0), ("none", False, 0), ("limited", True, 1), ("", True, 1)):
+        calls.clear()
+        monkeypatch.setattr(backend, "nmcli", lambda *a, s=state, **k: subprocess.CompletedProcess(a, 0, s + "\n", ""))
+        assert backend.online_now() is want
+        assert len(calls) == probed
+
+
+def test_reach_is_bounded(monkeypatch):
+    import time as t
+    monkeypatch.setattr(backend.socket, "create_connection", lambda *a, **k: t.sleep(5))
+    start = t.monotonic()
+    assert backend.reach(("x",), 0.3) is False
+    assert t.monotonic() - start < 1
