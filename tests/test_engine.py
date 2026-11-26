@@ -189,3 +189,32 @@ def test_niri_leaves_the_update_checker_to_xdg_autostart(monkeypatch):
     monkeypatch.setattr(engine, "SERVICES", [])
     engine.desktop({"desktop": "niri", "shell": ""}, "kiri", "us")
     assert "kuaka" not in files["/home/kiri/.config/niri/config.kdl"]
+
+
+@pytest.mark.parametrize("wm,path", [
+    ("sway", ".config/sway/config"), ("labwc", ".config/labwc/autostart"), ("i3", ".config/i3/config"),
+    ("bspwm", ".config/bspwm/bspwmrc"), ("openbox", ".config/openbox/autostart"),
+])
+def test_window_managers_start_live_wallpapers_only_when_installed(monkeypatch, wm, path):
+    files = {}
+    monkeypatch.setattr(engine, "write", lambda p, text, mode=0o644: files.__setitem__(p, text))
+    monkeypatch.setattr(engine, "chroot", lambda *a, **k: None)
+    monkeypatch.setattr(engine, "login_manager", lambda d, user, autologin: "greetd")
+    monkeypatch.setattr(engine, "from_system", lambda p: "")
+    monkeypatch.setattr(engine, "SERVICES", [])
+    engine.desktop({"desktop": wm, "shell": ""}, "kiri", "us")
+    text = files[f"/home/kiri/{path}"]
+    assert text.count("kereru --autostart") == 1
+    assert "test -x /usr/bin/kereru && kereru --autostart" in text
+    assert ";" not in engine.KERERU and "," not in engine.KERERU
+
+
+def test_niri_leaves_live_wallpapers_to_xdg_autostart(monkeypatch):
+    files = {}
+    monkeypatch.setattr(engine, "write", lambda p, text, mode=0o644: files.__setitem__(p, text))
+    monkeypatch.setattr(engine, "chroot", lambda *a, **k: None)
+    monkeypatch.setattr(engine, "login_manager", lambda d, user, autologin: "greetd")
+    monkeypatch.setattr(engine, "from_system", lambda p: "")
+    monkeypatch.setattr(engine, "SERVICES", [])
+    engine.desktop({"desktop": "niri", "shell": ""}, "kiri", "us")
+    assert "kereru" not in files["/home/kiri/.config/niri/config.kdl"]
