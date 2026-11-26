@@ -65,6 +65,9 @@ SCENES = [
     ("18-failed", "failed = true; errorText = 'Could not download packages. Check the network cable or Wi-Fi and try again.';"
                   " errorDetail = 'error: failed retrieving file mesa-1:25.2.7-1 from mirror : Connection timed out\n"
                   "error: failed to commit transaction (failed to retrieve some files)'; step = 7"),
+    ("19-wifi", "failed = false; step = 0; begin()"),
+    ("20-wifi-password", "network.picked = 'kea-house'; network.pickedSecure = true"),
+    ("21-wifi-wrong", "network.err = 'Wrong password, try again'"),
 ]
 
 
@@ -117,6 +120,9 @@ def main():
             backend._line('{"progress": 0.52, "status": "Installing packages"}')
             for line in LOG:
                 backend._line(line)
+        if name == "19-wifi":
+            backend._online = False
+            backend.onlineChanged.emit()
         expr = QQmlExpression(context, win, script)
         expr.evaluate()
         if expr.hasError():

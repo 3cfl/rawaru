@@ -101,7 +101,7 @@ Item {
                 size: 56
                 icon: "download"
                 text: "Install Fiordland"
-                onClicked: welcome.app.go(1)
+                onClicked: welcome.app.begin()
             }
             PillButton {
                 size: 56

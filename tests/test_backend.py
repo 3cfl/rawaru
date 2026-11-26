@@ -146,3 +146,35 @@ def test_slots_use_shared_validators(be):
     assert be.hostnameError("bad host")
     assert be.passwordError("a\nb")
     assert be.fullnameError("a:b")
+
+def test_parse_wifi_dedupes_and_sorts():
+    text = "\n".join([
+        " :40:WPA2:kea-house",
+        " :82:WPA2:kea-house",
+        "*:30:WPA2 WPA3:home\\:5g",
+        " :55:--:cafe free wifi",
+        " :90:WPA2:",
+    ])
+    nets = backend.parse_wifi(text)
+    assert [n["ssid"] for n in nets] == ["home:5g", "kea-house", "cafe free wifi"]
+    assert nets[0]["active"] and nets[0]["secure"]
+    assert nets[1]["signal"] == 82
+    assert not nets[2]["secure"]
+
+
+def test_wifi_error_messages():
+    assert backend.wifi_error("Error: Connection activation failed: Secrets were required, but not provided.").startswith("Wrong password")
+    assert "out of range" in backend.wifi_error("Error: No network with SSID 'x' found.")
+    assert backend.wifi_error("boom") == "Couldn't connect, try again"
+
+
+def test_dry_run_starts_online(monkeypatch):
+    monkeypatch.delenv("RAWARU_FAKE_OFFLINE", raising=False)
+    b = backend.Backend(dry_run=True)
+    assert b.online and b.netChecked and b.hasWifi
+
+
+def test_dry_run_fake_offline(monkeypatch):
+    monkeypatch.setenv("RAWARU_FAKE_OFFLINE", "1")
+    b = backend.Backend(dry_run=True)
+    assert not b.online

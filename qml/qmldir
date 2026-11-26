@@ -31,3 +31,4 @@ Switch 1.0 Switch.qml
 TextField 1.0 TextField.qml
 Txt 1.0 Txt.qml
 Welcome 1.0 Welcome.qml
+WifiDialog 1.0 WifiDialog.qml

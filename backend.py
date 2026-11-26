@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -187,6 +188,84 @@ def engine_command(engine, dry):
     return "sudo", ["-n", "python3", engine, "-"]
 
 
+def split_terse(line):
+    out, cur, esc = [], "", False
+    for ch in line:
+        if esc:
+            cur += ch
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    return out
+
+
+def parse_wifi(text):
+    best = {}
+    for line in text.splitlines():
+        f = split_terse(line)
+        if len(f) < 4:
+            continue
+        inuse, signal, security, ssid = f[0], f[1], f[2], ":".join(f[3:])
+        if not ssid.strip():
+            continue
+        try:
+            sig = int(signal)
+        except ValueError:
+            sig = 0
+        sec = security.strip() not in ("", "--")
+        net = {"ssid": ssid, "signal": sig, "secure": sec, "active": inuse.strip() == "*"}
+        old = best.get(ssid)
+        if not old or net["active"] or (not old["active"] and sig > old["signal"]):
+            best[ssid] = net
+    return sorted(best.values(), key=lambda n: (not n["active"], -n["signal"], n["ssid"].lower()))
+
+
+def nmcli(args, timeout=30, root=False):
+    cmd = ["nmcli", *args]
+    if root and os.geteuid() != 0:
+        cmd = ["sudo", "-n", *cmd]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def online_now():
+    try:
+        if nmcli(["-t", "-f", "CONNECTIVITY", "general"], 8).stdout.strip() == "full":
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for host in ("fiordlandlinux.org", "archlinux.org"):
+        try:
+            socket.create_connection((host, 443), 4).close()
+            return True
+        except OSError:
+            pass
+    return False
+
+
+def has_wifi():
+    try:
+        return any(l.split(":")[0] == "wifi" for l in nmcli(["-t", "-f", "TYPE", "device"], 8).stdout.splitlines())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def wifi_error(text):
+    t = text.lower()
+    if "secrets were required" in t or "802-1x" in t or "password" in t or "psk" in t:
+        return "Wrong password, try again"
+    if "no network with ssid" in t:
+        return "That network is out of range, rescan and try again"
+    if "not authorized" in t or "permission" in t:
+        return "Not allowed to change the network"
+    return "Couldn't connect, try again"
+
+
 class Backend(QObject):
     progressChanged = Signal()
     statusChanged = Signal()
@@ -197,6 +276,9 @@ class Backend(QObject):
     probed = Signal(str, "QVariantMap")
     editorClosed = Signal()
     optionsChanged = Signal()
+    onlineChanged = Signal()
+    wifiChanged = Signal()
+    wifiConnected = Signal(bool, str)
 
     def __init__(self, dry_run=False):
         super().__init__()
@@ -219,6 +301,131 @@ class Backend(QObject):
         self._low_end = detect_low_end()
         self._fiord_kernel = False
         self._crest_greeter = False
+        self._online = dry_run and os.environ.get("RAWARU_FAKE_OFFLINE") != "1"
+        self._net_checked = False
+        self._net_busy = False
+        self._has_wifi = False
+        self._wifi = []
+        self._scanning = False
+        self._joining = False
+        self._net_timer = QTimer(self)
+        self._net_timer.setInterval(4000)
+        self._net_timer.timeout.connect(self.checkOnline)
+        self._net_timer.start()
+        self.checkOnline()
+
+    @Property(bool, notify=onlineChanged)
+    def online(self):
+        return self._online
+
+    @Property(bool, notify=onlineChanged)
+    def netChecked(self):
+        return self._net_checked
+
+    @Property(bool, notify=wifiChanged)
+    def hasWifi(self):
+        return self._has_wifi
+
+    @Property("QVariantList", notify=wifiChanged)
+    def wifiNetworks(self):
+        return self._wifi
+
+    @Property(bool, notify=wifiChanged)
+    def wifiScanning(self):
+        return self._scanning
+
+    @Property(bool, notify=wifiChanged)
+    def wifiJoining(self):
+        return self._joining
+
+    @Slot()
+    def checkOnline(self):
+        if self._net_busy or self._proc is not None:
+            return
+        if self._dry:
+            self._net_checked = True
+            self._has_wifi = True
+            self.onlineChanged.emit()
+            self.wifiChanged.emit()
+            return
+        self._net_busy = True
+
+        def work():
+            try:
+                on, wifi = online_now(), has_wifi()
+                changed = on != self._online or not self._net_checked or wifi != self._has_wifi
+                self._online, self._has_wifi, self._net_checked = on, wifi, True
+                if changed:
+                    self.onlineChanged.emit()
+                    self.wifiChanged.emit()
+            finally:
+                self._net_busy = False
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def scanWifi(self):
+        if self._scanning:
+            return
+        self._scanning = True
+        self.wifiChanged.emit()
+
+        def work():
+            if self._dry:
+                time.sleep(0.6)
+                nets = [{"ssid": "kea-house", "signal": 82, "secure": True, "active": False},
+                        {"ssid": "cafe free wifi", "signal": 54, "secure": False, "active": False}]
+            else:
+                try:
+                    nets = parse_wifi(nmcli(["-t", "-f", "IN-USE,SIGNAL,SECURITY,SSID", "device", "wifi", "list",
+                                             "--rescan", "yes"], 40).stdout)
+                except (OSError, subprocess.SubprocessError):
+                    nets = []
+            self._wifi = nets
+            self._scanning = False
+            self.wifiChanged.emit()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def connectWifi(self, ssid, password):
+        if self._joining or not ssid:
+            return
+        self._joining = True
+        self.wifiChanged.emit()
+
+        def work():
+            ok, msg = False, ""
+            if self._dry:
+                time.sleep(1)
+                ok = password != "wrong"
+                msg = "" if ok else "Wrong password, try again"
+                if ok:
+                    self._online = True
+            else:
+                try:
+                    args = ["--wait", "30", "device", "wifi", "connect", ssid]
+                    if password:
+                        args += ["password", password]
+                    r = nmcli(args, 60, root=True)
+                    ok = r.returncode == 0
+                    if not ok:
+                        nmcli(["connection", "delete", "id", ssid], 15, root=True)
+                        msg = wifi_error(r.stdout + r.stderr)
+                except (OSError, subprocess.SubprocessError):
+                    msg = "Couldn't connect, try again"
+                if ok:
+                    for _ in range(10):
+                        if online_now():
+                            self._online = True
+                            break
+                        time.sleep(1)
+                    if not self._online:
+                        ok, msg = False, "Connected to the network but it has no internet"
+            self._joining = False
+            self._net_checked = True
+            self.onlineChanged.emit()
+            self.wifiChanged.emit()
+            self.wifiConnected.emit(ok, msg)
+        threading.Thread(target=work, daemon=True).start()
 
     @Property(bool, constant=True)
     def dryRun(self):

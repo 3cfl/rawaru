@@ -173,13 +173,18 @@ C.ApplicationWindow {
         if (n < 0 || n > 5 || step === 6) return
         step = n
     }
+    function begin() {
+        if (backend.online) go(1)
+        else network.start(true)
+    }
     function next() {
         if (step < 1 || step > 5 || !canNext) return
+        if (step === 5 && !backend.online) { network.start(false); return }
         if (step === 5) { confirm.open(); return }
         step++
     }
     function openLanguage() { language.open() }
-    function closePopups() { language.close(); confirm.close() }
+    function closePopups() { language.close(); confirm.close(); network.close() }
     function startInstall() {
         failed = false
         errorText = ""
@@ -420,6 +425,7 @@ C.ApplicationWindow {
                 Chip { text: win.backend.uefi ? "UEFI" : "BIOS"; icon: "memory"; glass: true }
                 Chip { visible: win.backend.dryRun; text: "Preview"; icon: "visibility"; tonal: true }
                 Chip { visible: win.lowEndUi; text: "Light mode"; icon: "eco"; glass: true }
+                Chip { visible: win.backend.netChecked && !win.backend.online; text: "Offline"; icon: "wifi_off"; tonal: true }
             }
         }
 
@@ -527,6 +533,12 @@ C.ApplicationWindow {
         actions: [
             PillButton { variant: "text"; text: "Close"; onClicked: language.close() }
         ]
+    }
+
+    WifiDialog {
+        id: network
+        app: win
+        onReady: if (win.step === 0) win.go(1)
     }
 
     Dialog {
