@@ -203,3 +203,22 @@ def test_reach_is_bounded(monkeypatch):
     start = t.monotonic()
     assert backend.reach(("x",), 0.3) is False
     assert t.monotonic() - start < 1
+
+
+def test_failed_wifi_join_keeps_profile_and_sends_secret_on_stdin(be, monkeypatch):
+    from unittest.mock import Mock
+
+    be._dry = False
+    commands = []
+
+    def nmcli(args, timeout, **kw):
+        commands.append((args, kw))
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+    monkeypatch.setattr(backend, "nmcli", nmcli)
+    monkeypatch.setattr(backend.threading, "Thread", lambda target, daemon: Mock(start=target))
+    be.connectWifi("test-network", "dummy-secret")
+    args, kw = commands[-1]
+    assert kw["stdin"] == "dummy-secret\n"
+    assert args[0] == "--ask"
+    assert all("dummy-secret" not in cmd and "delete" not in cmd for cmd, _ in commands)
