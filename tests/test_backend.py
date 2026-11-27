@@ -117,6 +117,16 @@ def test_log_refuses_symlink(be, tmp_path, monkeypatch):
     assert target.read_text() == "keep"
 
 
+def test_renderer_probe_with_core_application(monkeypatch):
+    from PySide6.QtCore import QCoreApplication
+
+    app = QCoreApplication.instance() or QCoreApplication([])
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.delenv("QT_QUICK_BACKEND", raising=False)
+    assert backend.gl_renderer() == ""
+    assert app is QCoreApplication.instance()
+
+
 def test_low_end_detection():
     assert backend.detect_low_end({"RAWARU_LOW_END": "1"}, 64_000_000, "") is True
     assert backend.detect_low_end({"RAWARU_LOW_END": "0"}, 1_000_000, "llvmpipe") is False
