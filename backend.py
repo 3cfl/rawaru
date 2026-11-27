@@ -226,11 +226,11 @@ def parse_wifi(text):
     return sorted(best.values(), key=lambda n: (not n["active"], -n["signal"], n["ssid"].lower()))
 
 
-def nmcli(args, timeout=30, root=False):
+def nmcli(args, timeout=30, root=False, stdin=None):
     cmd = ["nmcli", *args]
     if root and os.geteuid() != 0:
         cmd = ["sudo", "-n", *cmd]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout)
 
 
 def reach(hosts=("fiordlandlinux.org", "archlinux.org"), secs=6):
@@ -424,16 +424,17 @@ class Backend(QObject):
                 try:
                     args = ["--wait", "30", "device", "wifi", "connect", ssid]
                     if password:
-                        args += ["password", password]
+                        if "\n" in password or "\r" in password:
+                            raise ValueError("invalid Wi-Fi password")
+                        args.insert(0, "--ask")
                     dev = wifi_device(nmcli(["-t", "-f", "DEVICE,TYPE,STATE", "device"], 8).stdout)
                     if dev:
                         args += ["ifname", dev]
-                    r = nmcli(args, 60, root=True)
+                    r = nmcli(args, 60, root=True, stdin=password + "\n" if password else None)
                     ok = r.returncode == 0
                     if not ok:
-                        nmcli(["connection", "delete", "id", ssid], 15, root=True)
                         msg = wifi_error(r.stdout + r.stderr)
-                except (OSError, subprocess.SubprocessError):
+                except (OSError, ValueError, subprocess.SubprocessError):
                     msg = "Couldn't connect, try again"
                 if ok:
                     end = time.monotonic() + 15

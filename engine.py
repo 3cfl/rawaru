@@ -309,8 +309,6 @@ def disk_nodes(disk):
 
 def stop_agents():
     run(["gpgconf", "--homedir", f"{MNT}/etc/pacman.d/gnupg", "--kill", "all"], check=False)
-    for name in ("gpg-agent", "dirmngr", "keyboxd"):
-        run(["pkill", "-x", name], check=False)
 
 
 def release_mnt():

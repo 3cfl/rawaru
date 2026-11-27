@@ -270,3 +270,13 @@ def test_pacman_conf_disables_download_timeout(monkeypatch, tmp_path):
         import os
         os.unlink(path)
     assert "[options]\nDisableDownloadTimeout\n" in text
+
+
+def test_probe_excludes_operating_system_on_another_drive(monkeypatch):
+    disks = engine.disks
+    table = {"label": "gpt", "lastlba": 1000000, "partitions": [
+        {"node": "/dev/a1", "type": disks.ESP_TYPE, "start": 2048, "size": 16384}]}
+    monkeypatch.setattr(disks, "table", lambda _: table)
+    monkeypatch.setattr(disks, "blkid", lambda _: {})
+    monkeypatch.setattr(disks, "os_names", lambda: {"/dev/b1": "Windows 11"})
+    assert disks.probe("/dev/a", True)["system"] == ""

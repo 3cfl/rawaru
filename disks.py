@@ -119,7 +119,8 @@ def probe(disk, uefi=None):
         res["notes"].append("No EFI system partition on this disk, so only a full erase is possible.")
         return res
     res["esp"] = esps[0]["node"]
-    names = os_names()
+    nodes = {p["node"] for p in parts}
+    names = {node: name for node, name in os_names().items() if node in nodes}
     for v in names.values():
         if "windows" in v.lower():
             res["system"] = "Windows"
