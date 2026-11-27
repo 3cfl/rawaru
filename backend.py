@@ -130,7 +130,9 @@ def gl_renderer():
     if os.environ.get("QT_QPA_PLATFORM") == "offscreen" or os.environ.get("QT_QUICK_BACKEND") == "software":
         return ""
     try:
-        from PySide6.QtGui import QOffscreenSurface, QOpenGLContext
+        from PySide6.QtGui import QGuiApplication, QOffscreenSurface, QOpenGLContext
+        if not isinstance(QGuiApplication.instance(), QGuiApplication):
+            return ""
         ctx = QOpenGLContext()
         if not ctx.create():
             return ""
